@@ -1,6 +1,8 @@
 # User-defined exclusions
 sensitive/
 attachments/
+TODO.txt
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
