@@ -1,7 +1,8 @@
 import discord
 
-from sql_interface import (deleted_message, edited_message, new_message,
-                           update_check, new_channel)
+from sql_interface import (delete_channel, deleted_message, edited_message,
+                           guild_join, new_channel, new_message, update_channel,
+                           update_check, update_guild)
 
 client = discord.Client()
 
@@ -54,16 +55,12 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
 @client.event
 async def on_guild_join(guild: discord.Guild):
-    # TODO: Get a list of channels and download all of the messages/attachments.
-    print(f"Joined: {guild.name} with ID {guild.id}")
-    channels = guild.channels()
-    # TODO: Create a new table based on the guild ID for the new guild.
+    guild_join(guild)
 
 @client.event
 async def on_guild_channel_update(before: discord.TextChannel,
                                   after: discord.TextChannel):
-    print(f"Before: {before}")
-    print(f"After: {after}")
+    update_channel(after)
 
 @client.event
 async def on_guild_channel_create(channel: discord.TextChannel):
@@ -72,6 +69,12 @@ async def on_guild_channel_create(channel: discord.TextChannel):
 @client.event
 async def on_guild_channel_delete(channel: discord.TextChannel):
     print(f"{channel.name} was deleted.")
+    delete_channel(channel)
+
+@client.event
+async def on_guild_update(before: discord.Guild, after: discord.Guild):
+    if before.name != after.name:
+        update_guild(after)
 
 # Run the client with the token.
 with open("sensitive/bot_credentials", 'rt') as bot_credent:

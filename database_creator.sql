@@ -1,22 +1,10 @@
-CREATE DATABASE discordAuditor;
-
-USE discordAuditor;
-
-CREATE TABLE Guilds (
-    guildID bigint NOT NULL,
-	guildName varchar(255),
-	PRIMARY KEY (guildID)
-);
-
 CREATE TABLE Channels (
 	channelID bigint NOT NULL,
 	channelName varchar(255),
 	isNSFW boolean,
 	isNews boolean,
 	categoryID bigint,
-	guildID bigint NOT NULL,
-	PRIMARY KEY (channelID),
-	FOREIGN KEY (guildID) REFERENCES Guilds(guildID)
+	PRIMARY KEY (channelID)
 );
 
 CREATE TABLE Members (
@@ -25,9 +13,7 @@ CREATE TABLE Members (
 	discriminator bigint NOT NULL,
 	isBot boolean,
 	nickname varchar(255),
-	guildID bigint NOT NULL,
-	PRIMARY KEY (memberID),
-	FOREIGN KEY (guildID) REFERENCES Guilds(guildID)
+	PRIMARY KEY (memberID)
 );
 
 CREATE TABLE Messages (
