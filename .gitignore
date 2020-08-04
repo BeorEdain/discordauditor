@@ -1,7 +1,6 @@
 # User-defined exclusions
 sensitive/
-attachments/
-TODO.txt
+discordauditor/
 .vscode
 
 # Byte-compiled / optimized / DLL files

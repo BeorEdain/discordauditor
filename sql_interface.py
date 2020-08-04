@@ -1,9 +1,15 @@
-import discord
+import os
+import platform
 from datetime import datetime
+
+import discord
 from mysql.connector import (
     IntegrityError, MySQLConnection, ProgrammingError, connect)
 
 time_format = "%Y-%m-%d %H:%M:%S"
+
+attach_path_linux = "~/discordauditor/"
+attach_path_windows = "discordauditor/"
 
 def get_credentials(spec_database=None) -> MySQLConnection:
     """
@@ -43,7 +49,7 @@ def get_credentials(spec_database=None) -> MySQLConnection:
         print("There was an error with the credentials.")
         exit()
 
-def new_message(message: discord.Message):
+async def new_message(message: discord.Message):
     """Called when a new message is added to an audited server."""
     # Get the initial connection to the database
     connection = get_credentials(message.guild.id)
@@ -86,6 +92,33 @@ def new_message(message: discord.Message):
             val = (message.id, message.channel.id, message.author.id,
                     message.created_at, message.content, True, attachment.id,
                     attachment.filename, attachment.url)
+
+            directory = ""
+            server = f"server{message.guild.id}/"
+
+            if platform.system() == "Linux":
+                if not os.path.isdir(f"{attach_path_linux}{message.guild.id}/"):
+                    os.mkdir(attach_path_linux + server)
+                    directory = attach_path_linux + server
+
+            elif platform.system() == "Windows":
+                if not os.path.isdir(f"{attach_path_windows}{message.guild.id}/"):
+                    try:
+                        os.mkdir(attach_path_windows)
+                    except FileExistsError:
+                        pass
+                    try:
+                        os.mkdir(attach_path_windows + server)
+                    except FileExistsError:
+                        pass
+
+                    directory = attach_path_windows + server
+            
+            directory = (directory + str(message.attachments[0].id)+
+                            message.attachments[0].filename)
+
+            if not os.path.isfile(directory):
+                await discord.Attachment.save(message.attachments[0],directory)
 
     else:
         sql = ("INSERT INTO Messages (messageID, channelID, authorID,"+
@@ -365,6 +398,36 @@ async def update_check(client:discord.Client):
                                 message.author.id, message.created_at,
                                 message.content, True, attachment.id,
                                 attachment.filename, attachment.url))
+                        
+                        directory = ""
+                        server = f"server{guild.id}/"
+
+                        if platform.system() == "Linux":
+                            if not os.path.isdir(f"{attach_path_linux}"+
+                                                 f"{guild.id}/"):
+                                os.mkdir(attach_path_linux + server)
+                                directory = attach_path_linux + server
+
+                        elif platform.system() == "Windows":
+                            if not os.path.isdir(f"{attach_path_windows}"+
+                                                 f"{guild.id}/"):
+                                try:
+                                    os.mkdir(attach_path_windows)
+                                except FileExistsError:
+                                    pass
+                                try:
+                                    os.mkdir(attach_path_windows + server)
+                                except FileExistsError:
+                                    pass
+
+                                directory = attach_path_windows + server
+                        
+                        directory = (directory + str(message.attachments[0].id)+
+                                     message.attachments[0].filename)
+
+                        if not os.path.isfile(directory):
+                            await discord.Attachment.save(message.attachments[0],
+                                                        directory)
                 
                 # If the message has no attachments.
                 else:
@@ -446,7 +509,7 @@ def create_new_guild_database(guild, mydb, cursor):
 
     # Enables the execute() command to go through each of the CREATE commands.
     for result in cursor.execute(sql, multi=True):
-        pass
+        result
 
 def guild_join(guild: discord.Guild):
     """Called when a new guild is added."""

@@ -1,8 +1,8 @@
 import discord
 
 from sql_interface import (delete_channel, deleted_message, edited_message,
-                           guild_join, new_channel, new_message, update_channel,
-                           update_check, update_guild)
+                           guild_join, new_channel, new_message,
+                           update_channel, update_check, update_guild)
 
 client = discord.Client()
 
@@ -15,30 +15,15 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    # Test to ensure that the client does not respond to itself.
-    if message.author.bot:
-        return
-
     # A call for the bot to quit.
-    elif message.content.startswith('$quit'):
+    if message.content.startswith('$quit'):
         print("Goodbye!")
         await message.channel.send('Quitting!')
         await client.logout()
 
     # Used after bot commands so as to not log them unnecessarily.
     else:        
-        new_message(message)
-        if message.attachments:
-            await discord.Attachment.save(message.attachments[0],
-                f"attachments/{message.attachments[0].id}"+
-                f"{message.attachments[0].filename}")
-
-    # Debug segment to discover how to get all of the old messages
-    if message.content.startswith("$run"):
-        messages = list(await message.channel.history(limit=None).flatten())
-        messages.reverse()
-        for mess in messages:
-            print(f"{mess.content}")
+        await new_message(message)
 
 @client.event
 async def on_message_delete(message: discord.Message):
