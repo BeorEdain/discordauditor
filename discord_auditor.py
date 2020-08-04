@@ -36,7 +36,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
     edited_message(before)
 
     # Add the edited message as a new one to ensure message integrity.
-    new_message(after)
+    await new_message(after)
 
 @client.event
 async def on_guild_join(guild: discord.Guild):
