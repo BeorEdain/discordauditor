@@ -8,8 +8,7 @@ from mysql.connector import (
 
 time_format = "%Y-%m-%d %H:%M:%S"
 
-attach_path_linux = "~/discordauditor/"
-attach_path_windows = "discordauditor/"
+attach_path = "discordauditor/"
 
 def get_credentials(spec_database=None) -> MySQLConnection:
     """
@@ -96,23 +95,9 @@ async def new_message(message: discord.Message):
             directory = ""
             server = f"server{message.guild.id}/"
 
-            if platform.system() == "Linux":
-                if not os.path.isdir(f"{attach_path_linux}{message.guild.id}/"):
-                    os.mkdir(attach_path_linux + server)
-                    directory = attach_path_linux + server
-
-            elif platform.system() == "Windows":
-                if not os.path.isdir(f"{attach_path_windows}{message.guild.id}/"):
-                    try:
-                        os.mkdir(attach_path_windows)
-                    except FileExistsError:
-                        pass
-                    try:
-                        os.mkdir(attach_path_windows + server)
-                    except FileExistsError:
-                        pass
-
-                    directory = attach_path_windows + server
+            directory = attach_path + server
+            if not os.path.isdir(directory):
+                os.makedirs(attach_path + server)
             
             directory = (directory + str(message.attachments[0].id)+
                             message.attachments[0].filename)
@@ -402,38 +387,20 @@ async def update_check(client:discord.Client):
                         directory = ""
                         server = f"server{guild.id}/"
 
-                        if platform.system() == "Linux":
-                            if not os.path.isdir(f"{attach_path_linux}"+
-                                                 f"{guild.id}/"):
-                                try:
-                                    os.mkdir(attach_path_linux)
-                                except FileExistsError:
-                                    pass
-                                try:
-                                    os.mkdir(attach_path_linux + server)
-                                except:
-                                    pass
-                                
-                                directory = attach_path_linux + server
+                        if not os.path.isdir(f"{attach_path}{guild.id}/"):
+                            directory = attach_path + server
+                            try:
+                                os.makedirs(directory)
+                            except FileExistsError:
+                                pass
 
-                        elif platform.system() == "Windows":
-                            if not os.path.isdir(f"{attach_path_windows}"+
-                                                 f"{guild.id}/"):
-                                try:
-                                    os.mkdir(attach_path_windows)
-                                except FileExistsError:
-                                    pass
-                                try:
-                                    os.mkdir(attach_path_windows + server)
-                                except FileExistsError:
-                                    pass
+                        directory = attach_path + server
 
-                                directory = attach_path_windows + server
-                        
                         directory = (directory + str(message.attachments[0].id)+
                                      message.attachments[0].filename)
 
                         if not os.path.isfile(directory):
+                            print(directory)
                             await discord.Attachment.save(message.attachments[0],
                                                         directory)
                 
