@@ -405,7 +405,15 @@ async def update_check(client:discord.Client):
                         if platform.system() == "Linux":
                             if not os.path.isdir(f"{attach_path_linux}"+
                                                  f"{guild.id}/"):
-                                os.mkdir(attach_path_linux + server)
+                                try:
+                                    os.mkdir(attach_path_linux)
+                                except FileExistsError:
+                                    pass
+                                try:
+                                    os.mkdir(attach_path_linux + server)
+                                except:
+                                    pass
+                                
                                 directory = attach_path_linux + server
 
                         elif platform.system() == "Windows":
