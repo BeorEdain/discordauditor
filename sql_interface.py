@@ -341,6 +341,7 @@ async def update_check(client:discord.Client):
     # BEGIN MESSAGE CHECK ######################################################
     # Instantiate a list for the raw messages.
     raw_messages = []
+
     # Go through each guild.
     for guild in client.guilds:
         # Specify which database to use.
@@ -359,14 +360,17 @@ async def update_check(client:discord.Client):
 
         # Convert tuple'd records from SQL to simple list.
         message_ID_list = []
+        # clean_message_list = []
         for row in records:
-            message_ID_list.append(row[0])
+            if row[0] not in message_ID_list:
+                message_ID_list.append(row[0])
 
         # Use that list to remove any messages that are already in the server
         # from the raw message list.
+        clean_messages = []
         for mess in raw_messages:
-            if mess.id in message_ID_list:
-                raw_messages.remove(mess)
+            if mess.id not in message_ID_list:
+                clean_messages.append(mess)
 
         # Instantiate two lists, one for messages with attachments and one for
         # messages without.
@@ -374,14 +378,15 @@ async def update_check(client:discord.Client):
         to_upload_attach = []
 
         # If there are messages to add.
-        if len(raw_messages) > 0:
-            for message in raw_messages:
+        if len(clean_messages) > 0:
+            for message in clean_messages:
                 # If the message has one or more attachments.
                 if message.attachments:
                     for attachment in message.attachments:
                         to_upload_attach.append((message.id, message.channel.id,
                                 message.author.id, message.created_at,
                                 message.content, True, attachment.id,
+                                attachment.filename, str(message.id) +
                                 attachment.filename, attachment.url))
                         
                         directory = ""
@@ -400,7 +405,6 @@ async def update_check(client:discord.Client):
                                      message.attachments[0].filename)
 
                         if not os.path.isfile(directory):
-                            print(directory)
                             await discord.Attachment.save(message.attachments[0],
                                                         directory)
                 
@@ -409,12 +413,15 @@ async def update_check(client:discord.Client):
                     to_upload_no_attach.append((message.id, message.channel.id,
                             message.author.id, message.created_at,
                             message.content))
+            
+            raw_messages.clear()
 
         # If there are attachment messages to add to the database.
         if len(to_upload_attach) > 0:
             sql = ("INSERT INTO Messages (messageID, channelID, authorID,"+
                    "dateCreated, message, hasAttachment, attachmentID,"+
-                   "filename, url) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+                   "filename, qualifiedName, url) VALUES"+
+                   "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
             
             cursor.executemany(sql, to_upload_attach)
             mydb.commit()
@@ -426,7 +433,6 @@ async def update_check(client:discord.Client):
             
             cursor.executemany(sql, to_upload_no_attach)
             mydb.commit()
-        raw_messages.clear()
 
     mydb.close()
 
@@ -474,6 +480,7 @@ def create_new_guild_database(guild, mydb, cursor):
             hasAttachment boolean NOT NULL DEFAULT 0,
             attachmentID bigint,
             filename varchar(255),
+            qualifiedName varchar(255),
             url varchar(255),
             PRIMARY KEY (ID),
             FOREIGN KEY (channelID) REFERENCES Channels(channelID),

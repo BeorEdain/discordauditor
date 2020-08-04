@@ -30,6 +30,7 @@ CREATE TABLE Messages (
 	hasAttachment boolean NOT NULL DEFAULT 0,
 	attachmentID bigint,
 	filename varchar(255),
+	qualifiedName varchar(255),
 	url varchar(255),
 	PRIMARY KEY (ID),
 	FOREIGN KEY (channelID) REFERENCES Channels(channelID),
