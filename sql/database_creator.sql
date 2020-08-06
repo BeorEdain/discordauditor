@@ -1,16 +1,18 @@
 CREATE TABLE Channels (
 	channelID bigint NOT NULL,
-	channelName varchar(255),
-	isNSFW boolean,
-	isNews boolean,
+	channelName varchar(255) NOT NULL,
+	isNSFW boolean NOT NULL DEFAULT 0,
+	isNews boolean NOT NULL DEFAULT 0,
+	isDeleted boolean NOT NULL DEFAULT 0,
 	categoryID bigint,
+	canAccess boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (channelID)
 );
 CREATE TABLE Members (
 	memberID bigint NOT NULL,
 	memberName varchar(255) NOT NULL,
 	discriminator bigint NOT NULL,
-	isBot boolean,
+	isBot boolean NOT NULL DEFAULT 0,
 	nickname varchar(255),
 	PRIMARY KEY (memberID)
 );

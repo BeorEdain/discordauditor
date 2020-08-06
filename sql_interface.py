@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 
@@ -5,11 +6,23 @@ import discord
 from mysql.connector import (
     IntegrityError, MySQLConnection, ProgrammingError, connect)
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
+                                '%(funcName)s; %(message)s')
+
+handler = logging.FileHandler("Discord_Audit_Log.log", 'w')
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
+
 time_format = "%Y-%m-%d %H:%M:%S"
 
 attach_path = "discordauditor/"
 
 if not os.path.isdir(attach_path):
+    logger.critical("discordauditor/ does not exist. Creating.")
     os.mkdir(attach_path)
 
 async def new_message(message: discord.Message):
@@ -130,18 +143,16 @@ async def guild_join(guild: discord.Guild):
     try:
         cursor.execute(sql, val)
         mydb.commit()
-        build_database("guildList", cursor)
+        build_server_database("server" + str(guild.id), cursor)
+        
     except IntegrityError:
         print("Rejoined previously enrolled server")
 
-    mydb.close()
-
-    # for channel in guild.channels:
-    #     new_channel(channel)
-    
     channel_check(guild)
     member_check(guild)
     await message_check(guild)
+
+    mydb.close()
 
 def update_guild(guild: discord.Guild):
     """Called when a guild is updated."""
@@ -250,23 +261,33 @@ def get_credentials(spec_database=None) -> MySQLConnection:
         print("There was an error with the credentials.")
         exit()
 
-def build_database(comm: str, cursor, guildID = None):
+def build_guild_database(cursor):
     """
-    Builds the database based on pre-built SQL queries.\n
-    comm can be:\n
-        guildList: Make the guildList database.
-        server_database: A template for the individual databases.
+    Builds the guildList database that houses all of the information about each
+    guild.\n
+    cursor: The cursor for the MYSQL connection so multiple links are not
+    needed.
     """
     command = ""
-    if comm == "guildList":
-        with open("sql/guild_database_creator.sql", 'rt') as sql_comm:
-            command = sql_comm.read()
+    with open("sql/guild_database_creator.sql", 'rt') as sql_comm:
+        command = sql_comm.read()
+    
+    for cmd in cursor.execute(command, multi=True):
+        cmd
 
-    elif comm == "server_database":
-        with open("sql/database_creator.sql", 'rt') as sql_comm:
-            command = sql_comm.read()
-            cursor.execute(f"CREATE DATABASE {guildID}")
-            cursor.execute(f"USE {guildID}")
+def build_server_database(guildID: str, cursor):
+    """
+    Builds the database based on pre-built SQL queries.\n
+    guildID: The ID for the guild in the "server + ID" format.\n
+    cursor: The cursor for the MySQL connection so multiple links are not
+    needed.
+    """
+    cursor.execute(f"CREATE DATABASE {guildID}")
+    cursor.execute(f"USE {guildID}")
+
+    command = ""
+    with open("sql/database_creator.sql", 'rt') as sql_comm:
+        command = sql_comm.read()
 
     for cmd in cursor.execute(command, multi=True):
         cmd
@@ -291,7 +312,7 @@ def guild_check(client: discord.Client):
 
     # If the guild database doesn't exist.
     except ProgrammingError:
-        build_database("guildList", cursor)
+        build_guild_database(cursor)
      
     cursor.execute("SELECT guildID FROM Guilds")
 
@@ -342,7 +363,7 @@ def channel_check(guild: discord.Guild):
         cursor.execute(f"USE {database}")
     except ProgrammingError:
         # create_new_guild_database(guild[0], mydb, cursor)
-        build_database("server_database", cursor, database)
+        build_server_database(database, cursor)
 
     # for channel in client.get_guild(guild[0]).channels:
     for channel in guild.channels:
@@ -444,13 +465,24 @@ async def message_check(guild: discord.Guild):
     raw_messages = []
     # Specify which database to use.
     cursor.execute(f"USE server{guild.id}")
-    
+
+    channel_permissions = []
+
     # Go through each channel
     for channel in guild.channels:
         # Only worry about text channels.
         if type(channel) == discord.channel.TextChannel:
-            raw_messages = (raw_messages +
-                            await channel.history(limit=None).flatten())
+            try:
+                raw_messages = (raw_messages +
+                                await channel.history(limit=None).flatten())
+                channel_permissions.append((True,channel.id))
+            
+            except discord.errors.Forbidden:
+                channel_permissions.append((False,channel.id))
+    
+    sql = "UPDATE Channels SET canAccess=%s WHERE channelID=%s"
+    cursor.executemany(sql,channel_permissions)
+    mydb.commit()
 
     # Reverse the raw messages so they're in order from oldest to newest.
     raw_messages.reverse()
