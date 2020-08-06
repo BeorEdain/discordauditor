@@ -6,7 +6,6 @@ CREATE TABLE Channels (
 	categoryID bigint,
 	PRIMARY KEY (channelID)
 );
-
 CREATE TABLE Members (
 	memberID bigint NOT NULL,
 	memberName varchar(255) NOT NULL,
@@ -15,7 +14,6 @@ CREATE TABLE Members (
 	nickname varchar(255),
 	PRIMARY KEY (memberID)
 );
-
 CREATE TABLE Messages (
 	ID int NOT NULL AUTO_INCREMENT,
 	messageID bigint NOT NULL,
