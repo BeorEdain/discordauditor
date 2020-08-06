@@ -110,6 +110,9 @@ if not os.path.isfile("sensitive/database_credentials"):
     password=getpass(prompt=f"Please enter the password for {user}:")
 
     # Write the information to a file so this doesn't need to happen again.
+    if not os.path.isdir("sensitive/"):
+        os.mkdir("sensitive/")
+        
     with open("sensitive/database_credentials", 'wt') as data_credent:
         data_credent.write(ip + "\n")
         data_credent.write(user + "\n")
