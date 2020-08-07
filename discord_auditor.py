@@ -78,8 +78,8 @@ async def on_message(message: discord.Message):
                              "No U.",
                              "But I'm not tired!",
                              "Fight me.",
-                             "You expected this was the $quit command? Too bad"+
-                             "! It was me, Dio!"]
+                             "You expected this to be the $quit command? Too "+
+                             "bad! It was me, Dio!"]
 
         await message.channel.send(choice(possible_messages))
 
@@ -129,26 +129,25 @@ async def on_guild_join(guild: discord.Guild):
 @client.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):
     # If the name of the guild is changed make note of it.
-    if before.name != after.name:
-        logger.debug("A guild had its name changed.")
-        update_guild(after)
+    logger.debug("A guild has been updated.")
+    update_guild(after)
 
 @client.event
-async def on_guild_remove(guild):
+async def on_guild_remove(guild: discord.Guild):
     # Note if a guild is left for whatever reason.
     logger.info("A guild was left.")
     guild_leave(guild)
 
 ##### BEGIN FILE EXISTANCE CHECKS ##############################################
-# Write the information to a file so this doesn't need to happen again.
+# Write the information to a file so this does not need to happen again.
 if not os.path.isdir("sensitive/"):
-    logger.critical("sensitive/ doesnt' exist. Creating.")
+    logger.critical("sensitive/ does not exist. Creating.")
     os.mkdir("sensitive/")
 
 if not os.path.isfile("sensitive/database_credentials"):
     logger.critical("database_credentials does not exist, polling client.")
     # Notify client that the database_credentials file could not be found.
-    print("The database_credentials file doesn't exist")
+    print("The database_credentials file does not exist")
 
     # Get the IP address or hostname of the MySQL server.
     ip=input("Please enter the IP address or hostname of the database server:")
@@ -176,14 +175,14 @@ try:
         credent = bot_credent.read()
 
 except FileNotFoundError:
-    # If it doesn't, notify the client.
-    logger.critical("bot_credentials doesn't exist. Polling user.")
+    # If it does not, notify the client.
+    logger.critical("bot_credentials does not exist. Polling user.")
     print("Could not find the bot_credentials file")
 
     # Ask the client to provide a token for the bot.
     token = input("Please enter the bot token:")
 
-    # Write the aforementioned token to a file so this doesn't need to happen
+    # Write the aforementioned token to a file so this does not need to happen
     # each time.
     logger.info("Writing bot_credentials to file.")
     with open("sensitive/bot_credentials", 'wt') as bot_credent:
