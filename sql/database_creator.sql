@@ -1,11 +1,11 @@
 CREATE TABLE Channels (
 	channelID bigint NOT NULL,
 	channelName varchar(255) NOT NULL,
+	channelTopic varchar(1000),
+	channelType varchar(255) NOT NULL,
 	isNSFW boolean NOT NULL DEFAULT 0,
 	isNews boolean NOT NULL DEFAULT 0,
-	isDeleted boolean NOT NULL DEFAULT 0,
 	categoryID bigint,
-	canAccess boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (channelID)
 );
 CREATE TABLE Members (

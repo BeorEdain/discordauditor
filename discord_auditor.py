@@ -42,7 +42,7 @@ async def on_ready():
         # Check for any new messages within the enrolled guilds since the bot
         # was restarted.
         logger.info(f"Checking for new messages in {guild.name}.")
-        await message_check(guild)
+        await message_check(guild, client)
 
     # Inform the client that the updates completed and that the bot is waiting.
     logger.info("Update complete. Waiting.")
@@ -124,7 +124,7 @@ async def on_guild_join(guild: discord.Guild):
     # Run the entire process to set up a new guild database and add it to the
     # primary guild database.
     logger.info("A new guild was joined.")
-    await guild_join(guild)
+    await guild_join(guild, client)
 
 @client.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):

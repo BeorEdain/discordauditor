@@ -161,10 +161,12 @@ def deleted_message(message: discord.Message):
     connection.commit()
     connection.close()
 
-async def guild_join(guild: discord.Guild):
+async def guild_join(guild: discord.Guild, client: discord.Client):
     """
     Called when a new guild is added.\n
     gulid: The new guild that has been enrolled.
+    client: The bot client. Used to get any members that left the server that
+    left messages.
     """
     mydb = get_credentials()
 
@@ -190,7 +192,7 @@ async def guild_join(guild: discord.Guild):
 
     channel_check(guild)
     member_check(guild)
-    await message_check(guild)
+    await message_check(guild, client)
 
     mydb.close()
 
@@ -234,18 +236,17 @@ def new_channel(channel: discord.TextChannel):
     # Get the initial connection to the database.
     connection = get_credentials(channel.guild.id)
 
-    if type(channel) == discord.TextChannel:
-        # Set up the prepared statement to insert the new channel in to the table.
-        sql = ("INSERT INTO Channels (channelID, channelName, isNSFW, isNews,"+
-            "categoryID) VALUES (%s,%s,%s,%s,%s)")
-        val = (channel.id, channel.name, channel.is_nsfw(), channel.is_news(),
-            channel.category_id)
+    sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
+         "channelType,isNSFW,isNews,categoryID) VALUES (%s,%s,%s,%s,%s,%s,%s)")
 
-        # Set up the cursor, execute the command, and commit it to the databse.
-        cursor = connection.cursor()
-        cursor.execute(sql,val)
-        connection.commit()
-        cursor.close()
+    val=(channel.id,channel.name,channel.topic,str(channel.type),
+         channel.is_nsfw(),channel.is_news(),channel.category_id)
+
+    # Set up the cursor, execute the command, and commit it to the databse.
+    cursor = connection.cursor()
+    cursor.execute(sql,val)
+    connection.commit()
+    cursor.close()
 
 def update_channel(channel: discord.TextChannel):
     """
@@ -254,10 +255,10 @@ def update_channel(channel: discord.TextChannel):
     """
     mydb = get_credentials(channel.guild.id)
 
-    sql = ("UPDATE Channels SET channelName=%s,isNSFW=%s,isNews=%s,"+
-           "categoryID=%s WHERE channelID=%s")
-    val = (channel.name,channel.is_nsfw(),channel.is_news(),channel.category_id,
-           channel.id)
+    sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
+           "isNews=%s,categoryID=%s WHERE channelID=%s")
+    val = (channel.name,channel.topic,channel.is_nsfw(),channel.is_news(),
+           channel.category_id,channel.id)
 
     cursor = mydb.cursor()
     cursor.execute(sql,val)
@@ -455,7 +456,6 @@ def channel_check(guild: discord.Guild):
     cursor = mydb.cursor()
     # Instantiate a list for the channels that the bot can access.
     channel_list = []
-    deleted_channels = []
     database = "server" + str(guild.id)
     try:
         cursor.execute(f"USE {database}")
@@ -466,8 +466,7 @@ def channel_check(guild: discord.Guild):
         # Only grab the IDs of the text channels as the bot has no use in a
         # voice channel for example and category channels don't have text in
         # them.
-        if type(channel) == discord.channel.TextChannel:
-            channel_list.append(channel.id)
+        channel_list.append(channel.id)
 
     # Get all of the chennel IDs from the Channels table.
     sql = "SELECT * FROM Channels"
@@ -479,19 +478,16 @@ def channel_check(guild: discord.Guild):
     # Go through each record to ensure that all of the currently enrolled
     # channels are part of the database.
     for row in records:
-        print(row)
         if row[0] in channel_list:
             channel_list.remove(row[0])
-
-        elif row[0] not in channel_list:
-            deleted_channels.append(row[0])
 
     # If there are any left in the list of enrolled channels.
     if len(channel_list) > 0:
         # Build the prepared statement to insert the values for the
         # channels.
-        sql = ("INSERT INTO Channels (channelID, channelName, isNSFW,"+
-                "isNews, categoryID) VALUES (%s,%s,%s,%s,%s)")
+        sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
+             "channelType,isNSFW,isNews,categoryID) VALUES "+
+             "(%s,%s,%s,%s,%s,%s,%s)")
         
         # Instantiate an empty list for the values.
         vals = []
@@ -505,22 +501,20 @@ def channel_check(guild: discord.Guild):
             # Add the channel ID, name, whether it's NSFW, whether it's
             # news, the category ID (if there is one), and the guild ID to
             # the second part of the prepared statement as a tuple.
-            vals.append((specific_channel.id, specific_channel.name,
-                        specific_channel.is_nsfw(),
-                        specific_channel.is_news(),
-                        specific_channel.category_id))
+            if type(specific_channel) == discord.TextChannel:
+                vals.append((specific_channel.id,specific_channel.name,
+                            specific_channel.topic,str(specific_channel.type),
+                            specific_channel.is_nsfw(),
+                            specific_channel.is_news(),
+                            specific_channel.category_id))
+            
+            else:
+                vals.append((specific_channel.id,specific_channel.name,"NULL",
+                            str(specific_channel.type),False,False,
+                            specific_channel.category_id))
         
         # Add each of the tuples to the database.
         cursor.executemany(sql, vals)
-        mydb.commit()
-
-    if len(deleted_channels) > 0:
-        sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
-        vals = []
-        for channel in deleted_channels:
-            vals.append((channel,))
-        
-        cursor.executemany(sql,vals)
         mydb.commit()
 
     mydb.close()
@@ -571,10 +565,12 @@ def member_check(guild: discord.Guild):
 
     mydb.close()
 
-async def message_check(guild: discord.Guild):
+async def message_check(guild: discord.Guild, client: discord.Client):
     """
     Run when there's a need to check a guild's messages.\n
     guild: The guild that the bot will get the messages for.
+    client: The bot client. Used to get any members that left the server that
+    left messages.
     """
     mydb = get_credentials()
     cursor = mydb.cursor()
@@ -583,23 +579,12 @@ async def message_check(guild: discord.Guild):
     # Specify which database to use.
     cursor.execute(f"USE server{guild.id}")
 
-    channel_permissions = []
-
     # Go through each channel
     for channel in guild.channels:
         # Only worry about text channels.
         if type(channel) == discord.channel.TextChannel:
-            try:
-                raw_messages = (raw_messages +
-                                await channel.history(limit=None).flatten())
-                channel_permissions.append((True,channel.id))
-            
-            except discord.errors.Forbidden:
-                channel_permissions.append((False,channel.id))
-    
-    sql = "UPDATE Channels SET canAccess=%s WHERE channelID=%s"
-    cursor.executemany(sql,channel_permissions)
-    mydb.commit()
+            raw_messages = (raw_messages +
+                            await channel.history(limit=None).flatten())
 
     # Reverse the raw messages so they're in order from oldest to newest.
     raw_messages.reverse()
@@ -612,18 +597,62 @@ async def message_check(guild: discord.Guild):
     message_list = []
     for row in records:
         if row[0] not in message_list:
-            message_list.append(row[0])
+            message_list.append(row[0]) 
 
     # Use that list to remove any messages that are already in the server
     # from the raw message list.
     clean_messages = []
     attachment_list = []
+    message_ID_list = []
+    deleted_messages = []
+
+    raw_users = []
     for mess in raw_messages:
+        raw_users.append(mess.author.id)
         if mess.id not in message_list:
             clean_messages.append(mess)
+        
+        message_ID_list.append(mess.id)
 
         if mess.attachments:
             attachment_list.append(mess)
+
+    for row in records:
+        if row[0] not in message_ID_list:
+            deleted_messages.append(row[0])
+
+    sql = "SELECT memberID FROM Members"
+    cursor.execute(sql)
+    records = cursor.fetchall()
+
+    user_ID_list = []
+    for row in records:
+        user_ID_list.append(row[0])
+    
+    raw_users = list(dict.fromkeys(raw_users))
+
+    for user in user_ID_list:
+        if user in raw_users:
+            raw_users.remove(user)
+    
+    sql = ("INSERT INTO Members (memberID,memberName,discriminator,isBot,"+
+          "nickname) VALUES (%s,%s,%s,%s,%s)")
+    vals = []
+    for userID in raw_users:
+        user = client.get_user(userID)
+        vals.append((user.id,user.name,user.discriminator,user.bot,
+                    user.display_name))
+    
+    cursor.executemany(sql,vals)
+    mydb.commit()
+
+    sql = "UPDATE Messages SET isDeleted=%s,dateDeleted=%s WHERE messageID=%s"
+    vals = []
+    for mess in deleted_messages:
+        vals.append((True,datetime.utcnow().strftime(time_format),mess))
+
+    cursor.executemany(sql,vals)
+    mydb.commit()
 
     # Instantiate two lists, one for messages with attachments and one for
     # messages without.
