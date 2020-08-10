@@ -45,44 +45,33 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    if message.author.id == client.user.id:
+    await new_message(message)
+    if message.author.id==client.user.id:
         return
 
     # A call for the bot to quit.
-    if (message.content.startswith('$quit') and 
-                                message.author.id == client_info.owner.id):
+    if (message.content=='$quit' and message.author.id==client_info.owner.id
+          and message.guild.owner.id==client_info.owner.id):
+
         logger.info("Bot was told to close by owner. Shutting down.")
-        print("Goodbye!")
         await message.channel.send('Quitting!')
         await client.logout()
     
-    elif (message.content.startswith('$quit') and
-                                message.author.id != client_info.owner.id):  
-        possible_messages = ["You don't have enough badges to train me!",
-                             "Nice try, punk.",
-                             "You're not my master.",
-                             "No.",
-                             "You're not the boss of me.",
-                             "Only the creator can shut me down.",
-                             "I'm sorry Dave, I'm afraid I can't do that.",
-                             "Stop it, that tickles.",
-                             "UwU what's this?",
-                             "Say '$quit' again. I dare you. I double dare you.",
-                             "I can't rest when there are enemies nearby.",
-                             "No U.",
-                             "But I'm not tired!",
-                             "Fight me.",
-                             "You expected this to be the $quit command? Too "+
-                             "bad! It was me, Dio!"]
+    elif (message.content=='$quit' and message.author.id!=client_info.owner.id
+          and client_info.owner.id==message.guild.owner.id):
+
+        possible_messages = []
+        
+        with open("possible_messages.txt", 'rt') as quips:
+            for line in quips:
+                possible_messages.append(line)
 
         await message.channel.send(choice(possible_messages))
-
-    else:
         await new_message(message)
 
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
-    # Make note that the message was edited
+    # Make note that the message was edited.
     edited_message(before)
 
     # Add the edited message as a new one to ensure message integrity.
