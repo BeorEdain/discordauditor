@@ -9,7 +9,7 @@ from sql_interface import (channel_check, delete_channel, deleted_message,
                            edited_message, guild_check, guild_join,
                            guild_leave, logger, member_check, message_check,
                            new_channel, new_message, update_channel,
-                           update_guild)
+                           update_guild, voice_activity)
 
 logger.info("Initializing discord client.")
 client = discord.Client()
@@ -22,38 +22,32 @@ async def on_ready():
     logger.debug("Getting application info.")
     client_info = await client.application_info()
     # Inform the client that the login was successful.
-    print(f'We have logged in as {client.user}')
+    logger.info(f'We have logged in as {client.user}.')
 
     # Check for any new guilds since the bot had been restarted.
-    logger.info("Checking for new guilds.")
     guild_check(client)
 
     for guild in client.guilds:
         # Check for any new channels within the enrolled guilds since the bot
         # was restarted.
-        logger.info(f"Checking for new channels in {guild.name}.")
         channel_check(guild)
 
         # Check for any new members within the enrolled guilds since the bot was
         # restarted.
-        logger.info(f"Checking for new members in {guild.name}.")
         member_check(guild)
 
         # Check for any new messages within the enrolled guilds since the bot
         # was restarted.
-        logger.info(f"Checking for new messages in {guild.name}.")
         await message_check(guild, client)
 
     # Inform the client that the updates completed and that the bot is waiting.
     logger.info("Update complete. Waiting.")
-    print("Completed update check. Ready and waiting...")
 
 @client.event
 async def on_message(message: discord.Message):
     if message.author.id == client.user.id:
         return
 
-    logger.debug("New message received.")
     # A call for the bot to quit.
     if (message.content.startswith('$quit') and 
                                 message.author.id == client_info.owner.id):
@@ -83,12 +77,12 @@ async def on_message(message: discord.Message):
 
         await message.channel.send(choice(possible_messages))
 
-    await new_message(message)
+    else:
+        await new_message(message)
 
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
     # Make note that the message was edited
-    logger.debug("A message was edited.")
     edited_message(before)
 
     # Add the edited message as a new one to ensure message integrity.
@@ -97,45 +91,47 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 @client.event
 async def on_message_delete(message: discord.Message):
     # Note that a message was deleted.
-    logger.debug("A message was deleted.")
     deleted_message(message)
+
+@client.event
+async def on_voice_state_update(member: discord.Member,
+                                before: discord.VoiceState,
+                                after: discord.VoiceState):
+    # Since we only care about who was in what channel and when, we only look to
+    # see if the channels before and after are different.
+    if before.channel != after.channel:
+        voice_activity(member, before, after)
 
 @client.event
 async def on_guild_channel_create(channel: discord.TextChannel):
     # Add a new channel to the guild.
-    logger.debug("A channel was created.")
     new_channel(channel)
 
 @client.event
 async def on_guild_channel_update(before: discord.TextChannel,
                                   after: discord.TextChannel):
     # Update the channel.
-    logger.debug("A channel was updated.")
     update_channel(after)
 
 @client.event
 async def on_guild_channel_delete(channel: discord.TextChannel):
     # Mark a channel as deleted.
-    logger.debug("A channel was deleted.")
     delete_channel(channel)
 
 @client.event
 async def on_guild_join(guild: discord.Guild):
     # Run the entire process to set up a new guild database and add it to the
     # primary guild database.
-    logger.info("A new guild was joined.")
     await guild_join(guild, client)
 
 @client.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):
     # If the name of the guild is changed make note of it.
-    logger.debug("A guild has been updated.")
     update_guild(after)
 
 @client.event
 async def on_guild_remove(guild: discord.Guild):
     # Note if a guild is left for whatever reason.
-    logger.info("A guild was left.")
     guild_leave(guild)
 
 ##### BEGIN FILE EXISTANCE CHECKS ##############################################
@@ -171,13 +167,12 @@ if not os.path.isfile("sensitive/database_credentials"):
 try:
     # Try to see if the bot_credentials file exists.
     with open("sensitive/bot_credentials", 'rt') as bot_credent:
-        logger.info("Opening bot_credentials")
+        logger.info("Opening bot_credentials.")
         credent = bot_credent.read()
 
 except FileNotFoundError:
     # If it does not, notify the client.
-    logger.critical("bot_credentials does not exist. Polling user.")
-    print("Could not find the bot_credentials file")
+    logger.warning("bot_credentials does not exist. Polling user.")
 
     # Ask the client to provide a token for the bot.
     token = input("Please enter the bot token:")

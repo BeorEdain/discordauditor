@@ -16,6 +16,16 @@ CREATE TABLE Members (
 	nickname varchar(255),
 	PRIMARY KEY (memberID)
 );
+CREATE TABLE VoiceActivity (
+	ID int NOT NULL AUTO_INCREMENT,
+	memberID bigint NOT NULL,
+	channelID bigint NOT NULL,
+	dateEntered timestamp NOT NULL,
+	dateLeft timestamp,
+	PRIMARY KEY (ID),
+	FOREIGN KEY (memberID) REFERENCES Members(memberID),
+	FOREIGN KEY (channelID) REFERENCES Channels(channelID)
+);
 CREATE TABLE Messages (
 	ID int NOT NULL AUTO_INCREMENT,
 	messageID bigint NOT NULL,
