@@ -1,30 +1,63 @@
+import configparser
 import logging
 import os
 from datetime import datetime
 
 import discord
-from mysql.connector import (DatabaseError, IntegrityError, MySQLConnection,
-                             ProgrammingError, connect)
+from mysql.connector import (DatabaseError, IntegrityError, InterfaceError,
+                             MySQLConnection, ProgrammingError, connect)
 
+# Initialize the configuration file in memory.
+config = configparser.ConfigParser()
+
+# Read the configuration file into memory. Doesn't need to be in a try/except
+# catch because the file is checked for and created if necessary in the 
+# discord_auditor.py file.
+config.read(r'config.ini')
+
+# Initialize the logger.
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
+# Get the log level from the config file.
+log_level=config.get("logger","log_level")
+
+# Get the appropriate level of logging according to the config file.
+if log_level=="DEBUG":
+    log_level=logging.DEBUG
+elif log_level=="INFO":
+    log_level=logging.INFO
+elif log_level=="WARNING":
+    log_level=logging.WARNING
+elif log_level=="ERROR":
+    log_level=logging.ERROR
+elif log_level=="CRITICAL":
+    log_level=logging.CRITICAL
+
+# Set the level of the logger according to the config file.
+logger.setLevel(log_level)
+
+# Format the logger.
 formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
                                 '%(funcName)s; %(message)s')
 
-handler = logging.FileHandler("Discord_Audit_Log.log", 'w')
+# Set the name of the log file according to the config file.
+handler = logging.FileHandler(config.get("logger","log_filename"))
+
+# Add the log format to the handler.
 handler.setFormatter(formatter)
 
+# Add the handler to the logger.
 logger.addHandler(handler)
 
+# Set the appropriate time format for both MySQL and Discord.
 time_format = "%Y-%m-%d %H:%M:%S"
 
-attach_path = "discordauditor/"
+# Get the attachment path the bot will use.
+attach_path = config.get("attach_path","path")
 
-in_voice = []
-
+# Create the directory if it doesn't exist already.
 if not os.path.isdir(attach_path):
-    logger.critical("discordauditor/ does not exist. Creating.")
+    logger.critical(f"{attach_path} does not exist. Creating.")
     os.mkdir(attach_path)
 
 async def new_message(message: discord.Message):
@@ -32,8 +65,8 @@ async def new_message(message: discord.Message):
     Called when a new message is added to an audited server.\n
     message: The message that is going to be added.
     """
-    logger.debug(f"\'{message.author.name}\' wrote a message in "+
-                 f"\'{message.guild.name}\' -> \'{message.channel.name}\' "+
+    logger.info(f"\'{message.author.name}\' wrote a message in "+
+                 f"\'{message.guild.name}\' in the \'{message.channel.name}\' "+
                  "channel.")
 
     # Get the initial connection to the database
@@ -66,7 +99,8 @@ async def new_message(message: discord.Message):
 
     for row in records:
         if row != member:
-            logger.debug("The author of this message needs to be updated.")
+            logger.info(f"Member \'{message.author.name}\' needs to be "+
+                         "updated.")
             vals.append((member_name,member_discriminator,member_nickname,
                         member_ID))
         
@@ -76,8 +110,8 @@ async def new_message(message: discord.Message):
     # If there is no results, then the member doesn't exist in the table yet, so
     # they need to be added.
     if len(records) == 0:
-        logger.debug("This member has never written in this guild before."+
-                     "Adding to Members.")
+        logger.info(f"\'{message.author.id}\' has never written in "+
+                     f"\'{message.guild.name}\' before. Adding to Members.")
 
         # Build the SQL command.
         sql = ("INSERT INTO Members (memberID,memberName,discriminator,isBot,"+
@@ -148,7 +182,8 @@ def edited_message(message: discord.Message):
 
     current_time = datetime.utcnow().strftime(time_format)
 
-    logger.debug("A message has been edited.")
+    logger.debug(f"A message has been edited in {message.guild.name} -> "+
+                 f"{message.channel.name}.")
 
     # Set the prepared statement to update the appropriate values.
     sql = "UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s"
@@ -171,7 +206,8 @@ def deleted_message(message: discord.Message):
     # Get the current UTC time to record when the message was deleted.
     current_time = datetime.utcnow().strftime(time_format)
 
-    logger.debug("A message has been deleted.")
+    logger.debug(f"A message has been deleted from \'{message.guild.name}\' "+
+                 f"-> \'{message.channel.name}\'.")
 
     # Set up the prepared statement set the message as deleted and by whom.
     sql = "UPDATE Messages SET isDeleted=%s, dateDeleted=%s WHERE messageID=%s"
@@ -204,7 +240,8 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     # Meaning if they were not currently in a voice channel and they enter one.
     if not before.channel and after.channel:
         logger.info(f"\'{member.name}\' has entered the "+
-                    f"\'{after.channel.name}\' voice channel.")
+                    f"\'{after.channel.name}\' voice channel in "+
+                    f"\'{after.channel.guild.name}\'.")
 
         # Add a new line for this new entrance.
         sql = ("INSERT INTO VoiceActivity (memberID,channelID,dateEntered)"+
@@ -217,7 +254,8 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     elif before.channel and after.channel:
         logger.info(f"\'{member.name}\' has moved from the "+
                     f"\'{before.channel.name}\' voice channel to the "+
-                    f"\'{after.channel.name}\' voice channel.")
+                    f"\'{after.channel.name}\' voice channel in "+
+                    f"\'{after.channel.guild.name}\'.")
 
         # Update the previously null dateLeft for this user.
         sql=("UPDATE VoiceActivity SET dateLeft=%s WHERE memberID=%s order by "+
@@ -235,7 +273,8 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     # If the member is leaving a voice channel and not going to any other.
     else:
         logger.info(f"\'{member.name}\' has left the "+
-                    f"\'{before.channel.name}\' voice channel.")
+                    f"\'{before.channel.name}\' voice channel in "+
+                    f"\'{before.channel.guild.name}\'.")
 
         sql=("UPDATE VoiceActivity SET dateLeft=%s WHERE memberID=%s order by "+
              "ID desc limit 1")
@@ -254,7 +293,7 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     """
     mydb = get_credentials()
 
-    logger.info("A guild has been joined.")
+    logger.info(f"\'{guild.name}\' has been joined.")
 
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
@@ -268,7 +307,7 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
         build_server_database("server" + str(guild.id), cursor)
         
     except IntegrityError:
-        logger.warning("This guild has been previously enrolled.")
+        logger.warning(f"\'{guild.name}\' has been previously enrolled.")
 
         sql=("UPDATE Guilds SET guildName=%s,guildOwner=%s,enrolledOn=%s,"+
                "currentlyEnrolled=True,oustedOn=NULL WHERE guildID=%s")
@@ -288,7 +327,7 @@ def update_guild(guild: discord.Guild):
     Called when a guild is updated.\n
     guild: The guild that has been updated.
     """
-    logger.debug("A guild has been updated.")
+    logger.debug(f"\'{guild.name}\' has been updated.")
     mydb = get_credentials()
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
@@ -305,7 +344,7 @@ def guild_leave(guild: discord.Guild):
     leave.\n
     guild: The guild that the bot is no longer enrolled in.
     """
-    logger.info("A guild has been unenrolled.")
+    logger.info(f"\'{guild.name}\' has been unenrolled.")
     mydb = get_credentials()
 
     cursor = mydb.cursor()
@@ -322,7 +361,8 @@ def new_channel(channel: discord.TextChannel):
     Called when a new channel is added to an audited server.\n
     channel: the channel that has been created.    
     """
-    logger.info("A new channel has been created.")
+    logger.info(f"\'{channel.name}\' has been created in "+
+                f"\'{channel.guild.name}\'.")
 
     # Get the initial connection to the database.
     connection = get_credentials(channel.guild.id)
@@ -344,7 +384,8 @@ def update_channel(channel: discord.TextChannel):
     Called when a channel is updated.\n
     channel: The channel that has been updated.
     """
-    logger.debug("A channel has been updated.")
+    logger.info(f"Channel \'{channel.name}\' has been updated in "+
+                 f"\'{channel.guild.name}\'.")
     mydb = get_credentials(channel.guild.id)
 
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
@@ -362,7 +403,8 @@ def delete_channel(channel: discord.TextChannel):
     Called when a channel is deleted.\n
     channel: The channel that has been deleted.
     """
-    logger.info("A channel has been deleted.")
+    logger.info(f"Channel \'{channel.name}\' has been deleted from "+
+                f"\'{channel.guild.name}\'.")
     mydb = get_credentials(channel.guild.id)
 
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
@@ -382,39 +424,32 @@ def get_credentials(spec_database=None) -> MySQLConnection:
     connections to multiple databases are possible making this option
     infeasible.
     """
-    # Try to get the credentials for the server.
-    credentials = []
     try:
-        logger.debug("Trying to get the credentials for the database.")
-        with open("sensitive/database_credentials", 'rt') as key:
-            for item in key:
-                credentials.append(str(item).strip())
-    
-    # If the file isn't there, exit.
-    except FileNotFoundError:
-        logger.critical("The database_credentials file does not exist.")
-        exit()
-
-    # Try the connection.
-    try:
-        logger.debug("Trying to connect to the server.")
+        logger.debug("Establishing connection to the database server.")
         if not spec_database:
-            mydb = connect(
-                host=credentials[0],
-                user=credentials[1],
-                password=credentials[2])
+            mydb=connect(
+                host=config.get("database_credentials","address"),
+                user=config.get("database_credentials","username"),
+                password=config.get("database_credentials","password"))
+        
         else:
-            mydb = connect(
-                host=credentials[0],
-                user=credentials[1],
-                password=credentials[2],
+            mydb=connect(
+                host=config.get("database_credentials","address"),
+                user=config.get("database_credentials","username"),
+                password=config.get("database_credentials","password"),
                 database="server"+str(spec_database))
         
         return mydb
 
     # If the connection cannot be established due to input error, log and quit.
     except ProgrammingError:
-        logger.critical("There was an error with the credentials.")
+        logger.critical("There was an error with the credentials. "+
+                        "Shutting down.")
+        exit()
+    
+    except InterfaceError:
+        logger.critical("The database server cannot be accessed. "+
+                        "Shutting down.")
         exit()
 
 def build_guild_database(cursor):
@@ -439,7 +474,7 @@ def build_server_database(guildID: str, cursor):
     cursor: The cursor for the MySQL connection so multiple links are not
     needed.
     """
-    logger.info("Building the database.")
+    logger.info(f"Building the {guildID} database.")
     cursor.execute(f"CREATE DATABASE {guildID}")
     cursor.execute(f"USE {guildID}")
 
@@ -451,7 +486,8 @@ def build_server_database(guildID: str, cursor):
         for cmd in cursor.execute(command, multi=True):
             cmd
     except DatabaseError as err:
-        logger.error(f"There was an issue creating a database.\n{err}")
+        logger.error(f"There was an issue creating the {guildID} database."+
+                     f"\n{err}")
 
 def guild_check(client: discord.Client):
     """
@@ -459,7 +495,7 @@ def guild_check(client: discord.Client):
     client: The bot client. Used to determine which guilds are currently
     enrolled.
     """
-    logger.info("Getting a list of currently enrolled guilds.")
+    logger.info("Getting the list of currently enrolled guilds.")
     mydb = get_credentials()
     cursor = mydb.cursor()
 
@@ -497,11 +533,9 @@ def guild_check(client: discord.Client):
             new_guilds.remove(row[0])
 
         elif row[0] in new_guilds and not row[1]:
-            logger.debug("A guild has been reenrolled since reawakening.")
             reenrolled_guilds.append(row[0])
 
         elif row[0] not in new_guilds and row[1]:
-            logger.debug("A guild has been removed since reawakening.")
             unenrolled_guilds.append(row[0])
 
     # If there are any left in the list of enrolled guilds.
@@ -562,7 +596,7 @@ def channel_check(guild: discord.Guild):
     Run when there's a need to check a guild's channels.\n
     guild: The guild that the bot will get the channels for.
     """
-    logger.info(f"Checking for new channels in {guild.name}")
+    logger.info(f"Checking for new channels in \'{guild.name}\'")
     mydb = get_credentials()
     cursor = mydb.cursor()
     # Instantiate a list for the channels that the bot can access.
@@ -571,7 +605,8 @@ def channel_check(guild: discord.Guild):
     try:
         cursor.execute(f"USE {database}")
     except ProgrammingError:
-        logger.warning(f"The {guild.name} database does not exist. Creating.")
+        logger.warning(f"The \'{guild.name}\' database does not exist. "+
+                       "Creating.")
         build_server_database(database, cursor)
 
     for channel in guild.channels:
@@ -632,7 +667,7 @@ def channel_check(guild: discord.Guild):
     # If there are any left in the list of enrolled channels.
     if len(channel_list) > 0:
         logger.info(f"There have been {len(channel_list)} channels created in "+
-                    f"{guild.name} since reawakening. Adding them now.")
+                    f"\'{guild.name}\' since reawakening. Adding them now.")
         # Build the prepared statement to insert the values for the
         # channels.
         sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
@@ -675,7 +710,7 @@ def member_check(guild: discord.Guild):
     Run when there's a need to check for new members.\n
     guild: The guild that the bot will get the members for.
     """
-    logger.info(f"Checking the members in {guild.name}.")
+    logger.info(f"Checking the members in \'{guild.name}\'.")
     mydb = get_credentials()
     cursor = mydb.cursor()
 
@@ -710,7 +745,7 @@ def member_check(guild: discord.Guild):
 
     # If there are members to add to the database, add them.
     if len(members) > 0:
-        logger.info(f"{len(members)} have joined {guild.name} since "+
+        logger.info(f"{len(members)} have joined \'{guild.name}\' since "+
                     "reawakening. Adding them now.")
         sql = ("INSERT INTO Members (memberID,memberName,discriminator,"+
                 "isBot,nickname) VALUES (%s,%s,%s,%s,%s)")
@@ -727,7 +762,7 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     client: The bot client. Used to get any members that left the server that
     left messages.
     """
-    logger.info(f"Checking messages in {guild.name}.")
+    logger.info(f"Checking messages in \'{guild.name}\'.")
     mydb = get_credentials()
     cursor = mydb.cursor()
     # Instantiate a list for the raw messages.
@@ -835,7 +870,7 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     # If there are messages to add.
     if len(clean_messages) > 0:
         logger.info(f"There have been {len(clean_messages)} messages written "+
-                    f"in {guild.name} since reawakening. Adding them now.")
+                    f"in \'{guild.name}\' since reawakening. Adding them now.")
         for message in clean_messages:
             # If the message has one or more attachments.
             if message.attachments:

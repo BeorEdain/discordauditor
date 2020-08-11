@@ -1,9 +1,8 @@
 # User-defined exclusions
-sensitive/
 discordauditor/
 .vscode
-TODO.txt
-PRIVACY POLICY.txt
+misc/
+config.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

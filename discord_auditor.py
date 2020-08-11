@@ -1,3 +1,4 @@
+import configparser
 import logging
 import os
 from getpass import getpass
@@ -15,6 +16,8 @@ logger.info("Initializing discord client.")
 client = discord.Client()
 
 client_info = ""
+
+config = configparser.ConfigParser()
 
 @client.event
 async def on_ready():
@@ -56,6 +59,10 @@ async def on_message(message: discord.Message):
         logger.info("Bot was told to close by owner. Shutting down.")
         await message.channel.send('Quitting!')
         await client.logout()
+
+    elif (message.author.id==message.guild.owner.id and
+          message.content=="$leave"):
+          await message.guild.leave()
     
     elif (message.content=='$quit' and message.author.id!=client_info.owner.id
           and client_info.owner.id==message.guild.owner.id):
@@ -123,55 +130,62 @@ async def on_guild_remove(guild: discord.Guild):
     # Note if a guild is left for whatever reason.
     guild_leave(guild)
 
-##### BEGIN FILE EXISTANCE CHECKS ##############################################
-# Write the information to a file so this does not need to happen again.
-if not os.path.isdir("sensitive/"):
-    logger.critical("sensitive/ does not exist. Creating.")
-    os.mkdir("sensitive/")
-
-if not os.path.isfile("sensitive/database_credentials"):
-    logger.critical("database_credentials does not exist, polling client.")
-    # Notify client that the database_credentials file could not be found.
-    print("The database_credentials file does not exist")
-
-    # Get the IP address or hostname of the MySQL server.
-    ip=input("Please enter the IP address or hostname of the database server:")
-
-    # Get the username that will be used for all MySQL transactions.
-    user=input("Please enter the username that is used to log in:")
-
-    # Get the password for the aforementioned user in a safe way.
-    password=getpass(prompt=f"Please enter the password for {user}:")
-
-    logger.info("Writing database_credentials to file.")        
-    with open("sensitive/database_credentials", 'wt') as data_credent:
-        data_credent.write(ip + "\n")
-        data_credent.write(user + "\n")
-        data_credent.write(password)
-    
-    # Blank the password just in case of leakage.
-    password = ""
-
-# Run the client with the token.
 try:
-    # Try to see if the bot_credentials file exists.
-    with open("sensitive/bot_credentials", 'rt') as bot_credent:
-        logger.info("Opening bot_credentials.")
-        credent = bot_credent.read()
+    config.read_file(open(r'config.ini'))
 
 except FileNotFoundError:
-    # If it does not, notify the client.
-    logger.warning("bot_credentials does not exist. Polling user.")
+    print("config.ini does not exist. Creating now.")
 
-    # Ask the client to provide a token for the bot.
-    token = input("Please enter the bot token:")
+    # Add [logger] section.
+    config.add_section("logger")
 
-    # Write the aforementioned token to a file so this does not need to happen
-    # each time.
-    logger.info("Writing bot_credentials to file.")
-    with open("sensitive/bot_credentials", 'wt') as bot_credent:
-        bot_credent.write(token)
+    log_filename=input("What would you like to name the log? ")
+    config.set("logger","log_filename",log_filename)
 
-client.run(credent)
+    # TODO: Create check to ensure it's one of the appropriate levels.
+    log_level="NULL"
+    while log_level.lower() not in ("debug","info","warning","error",
+                                    "critical"):
+        log_level=input("What level would you like the log to record"+
+                        ",DEBUG, INFO, WARNING, ERROR, or CRITICAL? ")
+        config.set("logger","log_level",log_level.upper())
+
+    # Add [bot_credentials] section.
+    config.add_section("bot_credentials")
+    
+    credentials=getpass("Please enter the token for the bot to use. (It will +"
+                        "appear blank. This is intended): ")
+    config.set("bot_credentials","credentials",credentials)
+
+    # Add [database_credentials] section.
+    config.add_section("database_credentials")
+
+    address=input("Please enter the IP address or hostname of the database "+
+                  "server: ")
+    config.set("database_credentials","address",address)
+
+    username=input("Please enter the username that can access this database: ")
+    config.set("database_credentials","username",username)
+
+    password=getpass(f"Please enter the password for user {username} (It will "+
+                     "appear blank. This is intended): ")
+    config.set("database_credentials","password",password)
+
+    # Add [attach_path] section.
+    config.add_section("attach_path")
+    
+    attach_path=input("Where do you want attachments to be saved? ")
+    config.set("attach_path","path",attach_path)
+
+    with open('config.ini','wt') as config_file:
+        config.write(config_file)
+    
+    config.read_file(open(r'config.ini'))
+
+    # Blank credentials and password in case of leakage.
+    credentials=""
+    password=""
+
+client.run(config.get("bot_credentials","credentials"))
         
 # https://discordpy.readthedocs.io/en/latest/index.html
