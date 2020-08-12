@@ -1,8 +1,8 @@
 # User-defined exclusions
 discordauditor/
 .vscode
-misc/
 config.ini
+Discord_Audit_Log.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
