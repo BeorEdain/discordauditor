@@ -57,7 +57,7 @@ attach_path = config.get("attach_path","path")
 
 # Create the directory if it doesn't exist already.
 if not os.path.isdir(attach_path):
-    logger.critical(f"{attach_path} does not exist. Creating.")
+    logger.warning(f"{attach_path} does not exist. Creating.")
     os.mkdir(attach_path)
 
 async def new_message(message: discord.Message):
@@ -182,8 +182,9 @@ def edited_message(message: discord.Message):
 
     current_time = datetime.utcnow().strftime(time_format)
 
-    logger.debug(f"A message has been edited in {message.guild.name} -> "+
-                 f"{message.channel.name}.")
+    logger.info(f"\'{message.author.name}\' edited a message in "+
+                f"\'{message.guild.name}\' in the {message.channel.name} "+
+                "channel.")
 
     # Set the prepared statement to update the appropriate values.
     sql = "UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s"
@@ -206,8 +207,8 @@ def deleted_message(message: discord.Message):
     # Get the current UTC time to record when the message was deleted.
     current_time = datetime.utcnow().strftime(time_format)
 
-    logger.debug(f"A message has been deleted from \'{message.guild.name}\' "+
-                 f"-> \'{message.channel.name}\'.")
+    logger.info(f"A message was deleted from \'{message.guild.name}\' in the "+
+                f"{message.channel.name} channel.")
 
     # Set up the prepared statement set the message as deleted and by whom.
     sql = "UPDATE Messages SET isDeleted=%s, dateDeleted=%s WHERE messageID=%s"
@@ -293,7 +294,7 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     """
     mydb = get_credentials()
 
-    logger.info(f"\'{guild.name}\' has been joined.")
+    logger.info(f"\'{guild.name}\' has been enrolled.")
 
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
@@ -327,7 +328,7 @@ def update_guild(guild: discord.Guild):
     Called when a guild is updated.\n
     guild: The guild that has been updated.
     """
-    logger.debug(f"\'{guild.name}\' has been updated.")
+    logger.info(f"\'{guild.name}\' has been updated.")
     mydb = get_credentials()
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
@@ -361,8 +362,8 @@ def new_channel(channel: discord.TextChannel):
     Called when a new channel is added to an audited server.\n
     channel: the channel that has been created.    
     """
-    logger.info(f"\'{channel.name}\' has been created in "+
-                f"\'{channel.guild.name}\'.")
+    logger.info(f"The \'{channel.name}\' channel has been created in the "+
+                f"\'{channel.guild.name}\' guild.")
 
     # Get the initial connection to the database.
     connection = get_credentials(channel.guild.id)
@@ -384,8 +385,8 @@ def update_channel(channel: discord.TextChannel):
     Called when a channel is updated.\n
     channel: The channel that has been updated.
     """
-    logger.info(f"Channel \'{channel.name}\' has been updated in "+
-                 f"\'{channel.guild.name}\'.")
+    logger.info(f"Channel \'{channel.name}\' has been updated in the "+
+                 f"\'{channel.guild.name}\'  guild.")
     mydb = get_credentials(channel.guild.id)
 
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
@@ -403,8 +404,8 @@ def delete_channel(channel: discord.TextChannel):
     Called when a channel is deleted.\n
     channel: The channel that has been deleted.
     """
-    logger.info(f"Channel \'{channel.name}\' has been deleted from "+
-                f"\'{channel.guild.name}\'.")
+    logger.info(f"Channel \'{channel.name}\' has been deleted from the "+
+                f"\'{channel.guild.name}\' guild.")
     mydb = get_credentials(channel.guild.id)
 
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
@@ -425,7 +426,7 @@ def get_credentials(spec_database=None) -> MySQLConnection:
     infeasible.
     """
     try:
-        logger.debug("Establishing connection to the database server.")
+        logger.debug("Establishing a connection to the database server.")
         if not spec_database:
             mydb=connect(
                 host=config.get("database_credentials","address"),
@@ -450,6 +451,10 @@ def get_credentials(spec_database=None) -> MySQLConnection:
     except InterfaceError:
         logger.critical("The database server cannot be accessed. "+
                         "Shutting down.")
+        exit()
+    
+    except Exception as err:
+        logger.critical(f"Connection failed due to unknown reason.\n{err}")
         exit()
 
 def build_guild_database(cursor):
