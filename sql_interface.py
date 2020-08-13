@@ -69,9 +69,10 @@ async def new_message(message: discord.Message):
                  f"\'{message.guild.name}\' in the \'{message.channel.name}\' "+
                  "channel.")
 
-    # Get the initial connection to the database
+    # Set up the cursor.
     cursor = mydb.cursor()
 
+    # Switch to the appropriate database.
     logger.debug(f"Switching to server{message.guild.id}")
     cursor.execute(f"USE server{message.guild.id}")
 
@@ -86,12 +87,14 @@ async def new_message(message: discord.Message):
     # Get the results of the previous command.
     records = cursor.fetchall()
 
+    # Fetch all of the information about the member in a digestable manner.
     member_ID = message.author.id
     member_name = message.author.name
     member_discriminator = int(message.author.discriminator)
     member_is_bot = int(message.author.bot)
     member_nickname = message.author.nick
 
+    # Create a tuple out of the data.
     member = (member_ID,member_name,member_discriminator,member_is_bot,
               member_nickname)
 
@@ -99,6 +102,8 @@ async def new_message(message: discord.Message):
          "WHERE memberID=%s")
     vals = []
 
+    # Compare the information about the member on file against the information
+    # returned from Discord.
     for row in records:
         if row != member:
             logger.info(f"Member \'{message.author.name}\' needs to be "+
@@ -166,7 +171,7 @@ async def new_message(message: discord.Message):
         val = (message.id, message.channel.id, message.author.id,
                message.created_at, message.content)
 
-    # Execute the command and commit it to the database.
+    # Execute the command, commit it to the database, and close the cursor.
     cursor.execute(sql, val)
     mydb.commit()
     cursor.close()
@@ -176,7 +181,7 @@ def edited_message(message: discord.Message):
     Called when a message is edited in an audited server.\n
     message: The message that has been edited.
     """
-    # Get the initial connection to the database.
+    # Set up the cursor.
     cursor = mydb.cursor()
     
     cursor.execute(f"USE server{message.guild.id}")
@@ -191,7 +196,7 @@ def edited_message(message: discord.Message):
     sql = "UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s"
     val = (True,current_time,message.id)
 
-    # Set up the cursor, execute the command, then close the connection.
+    # Execute the command, commit it to the database, then close the cursor.
     cursor.execute(sql,val)
     mydb.commit()
     cursor.close()
@@ -201,7 +206,7 @@ def deleted_message(message: discord.Message):
     Called when a message is deleted from an audited server.\n
     message: The message that has been deleted.
     """
-    # Get the initial connection to the database.
+    # Set up the cursor.
     cursor = mydb.cursor()
 
     cursor.execute(f"USE server{message.guild.id}")
@@ -216,6 +221,7 @@ def deleted_message(message: discord.Message):
     sql = "UPDATE Messages SET isDeleted=%s, dateDeleted=%s WHERE messageID=%s"
     val = (True,current_time,message.id)
 
+    # Execute the command, commit it to the database, then close the cursor.
     cursor.execute(sql,val)
     mydb.commit()
     cursor.close()
@@ -229,7 +235,7 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     and they were not in another voice channel previously.\n
     after: The voice state. Will be None if the user is leaving the channel.
     """
-    # Get the initial credentials for the specific database.
+    # Set up the cursor.
     cursor = mydb.cursor()
     cursor.execute(f"USE server{member.guild.id}")
     
@@ -283,7 +289,7 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
         val=(time_now,member.id)
         cursor.execute(sql,val)
     
-    # No matter which happens, the command needs to be committed.
+    # Commit the command to the database and close the cursor.
     mydb.commit()
     cursor.close()
 
@@ -296,17 +302,23 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     """
     logger.info(f"\'{guild.name}\' has been enrolled.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
+
+    # Add the guild to the guildList database.
     cursor.execute("USE guildList")
     sql = ("INSERT INTO Guilds (guildID,guildName,guildOwner,enrolledOn)VALUES"+
           "(%s,%s,%s,%s)")
     val = (guild.id, str(guild.name), guild.owner.id,
            datetime.utcnow().strftime(time_format))
+    
+    # Try to insert the guild.
     try:
         cursor.execute(sql,val)
         mydb.commit()
         build_server_database("server" + str(guild.id), cursor)
         
+    # If the server already exists, update it.
     except IntegrityError:
         logger.warning(f"\'{guild.name}\' has been previously enrolled.")
 
@@ -317,8 +329,11 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
         cursor.execute(sql,val)
         mydb.commit()
 
+    # Close the cursor.
     cursor.close()
 
+    # Get all of the channels, members, and messages in the new or reenrolled
+    # guild.
     channel_check(guild)
     member_check(guild)
     await message_check(guild, client)
@@ -330,13 +345,19 @@ def update_guild(guild: discord.Guild):
     """
     logger.info(f"\'{guild.name}\' has been updated.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
+
+    # Connect to the guildList database.
     cursor.execute("USE guildList")
 
+    # Update the entry.
     sql = "UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s"
     val = (guild.name,guild.owner.id,guild.id)
     cursor.execute(sql,val)
     mydb.commit()
+
+    # Close the cursor.
     cursor.close()
 
 def guild_leave(guild: discord.Guild):
@@ -347,13 +368,19 @@ def guild_leave(guild: discord.Guild):
     """
     logger.info(f"\'{guild.name}\' has been unenrolled.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
+
+    # Connecto to the guildList database.
     cursor.execute("USE guildList")
+
+    # Update the entry.
     sql = "UPDATE Guilds SET currentlyEnrolled=%s,oustedOn=%s WHERE guildID=%s"
     val = (False,datetime.utcnow().strftime(time_format),guild.id)
-
     cursor.execute(sql,val)
     mydb.commit()
+
+    # Close the cursor.
     cursor.close()
 
 def new_channel(channel: discord.TextChannel):
@@ -364,18 +391,20 @@ def new_channel(channel: discord.TextChannel):
     logger.info(f"The \'{channel.name}\' channel has been created in the "+
                 f"\'{channel.guild.name}\' guild.")
 
-    # Get the initial connection to the database.
+    # Set up the cursor.
     cursor = mydb.cursor()
 
+    # Connect to the appropriate database.
     cursor.execute(f"USE server{channel.guild.id}")
 
+    # Insert the new channel.
     sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
          "channelType,isNSFW,isNews,categoryID) VALUES (%s,%s,%s,%s,%s,%s,%s)")
 
     val=(channel.id,channel.name,channel.topic,str(channel.type),
          channel.is_nsfw(),channel.is_news(),channel.category_id)
 
-    # Set up the cursor, execute the command, and commit it to the databse.
+    # Execute the command, commit it to the database, then close the cursor.
     cursor.execute(sql,val)
     mydb.commit()
     cursor.close()
@@ -388,15 +417,19 @@ def update_channel(channel: discord.TextChannel):
     logger.info(f"Channel \'{channel.name}\' has been updated in the "+
                  f"\'{channel.guild.name}\'  guild.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
 
+    # Connect to the appropriate database.
     cursor.execute(f"USE server{channel.guild.id}")
 
+    # Update the channel with the new information.
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
            "isNews=%s,categoryID=%s WHERE channelID=%s")
     val = (channel.name,channel.topic,channel.is_nsfw(),channel.is_news(),
            channel.category_id,channel.id)
 
+    # Execute the command, commit it to the database, then close the cursor.
     cursor.execute(sql,val)
     mydb.commit()
     cursor.close()
@@ -409,14 +442,17 @@ def delete_channel(channel: discord.TextChannel):
     logger.info(f"Channel \'{channel.name}\' has been deleted from the "+
                 f"\'{channel.guild.name}\' guild.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
 
+    # Connect to the appropriate database.
     cursor.execute(f"USE server{channel.guild.id}")
 
+    # Mark the appropriate channel as deleted.
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
     val = (channel.id,)
 
-    cursor = mydb.cursor()
+    # Execute the command, commit it to the database, then close the cursor.
     cursor.execute(sql,val)
     mydb.commit()
     cursor.close()
@@ -430,11 +466,21 @@ def build_guild_database(cursor):
     """
     logger.info("Building the guild database.")
     command = ""
+
+    # Get the commands from the file.
     with open("sql/guild_database_creator.sql", 'rt') as sql_comm:
         command = sql_comm.read()
     
-    for cmd in cursor.execute(command, multi=True):
-        cmd
+    # Iterate through each command and execute it.
+    try:
+        for cmd in cursor.execute(command, multi=True):
+            # Ignore this. It's only here so 'cmd' doesn't throw as a problem by
+            # the linter. It's not a problem, but it is annoying.
+            cmd
+
+    except DatabaseError as err:
+        logger.critical("There was an issue creating the guild database."+
+                     f"\n{err}")
 
 def build_server_database(guildID: str, cursor):
     """
@@ -444,18 +490,28 @@ def build_server_database(guildID: str, cursor):
     needed.
     """
     logger.info(f"Building the {guildID} database.")
+
+    # Create the new database.
     cursor.execute(f"CREATE DATABASE {guildID}")
+
+    # Switch to the new database.
     cursor.execute(f"USE {guildID}")
 
     command = ""
+
+    # Open the file with the commands for the new database.
     with open("sql/database_creator.sql", 'rt') as sql_comm:
         command = sql_comm.read()
 
+    # Iterate through each command and execute it.
     try:
         for cmd in cursor.execute(command, multi=True):
+            # Ignore this. It's only here so 'cmd' doesn't throw as a problem by
+            # the linter. It's not a problem, but it is annoying.
             cmd
+
     except DatabaseError as err:
-        logger.error(f"There was an issue creating the {guildID} database."+
+        logger.critical(f"There was an issue creating the {guildID} database."+
                      f"\n{err}")
 
 def guild_check(client: discord.Client):
@@ -466,9 +522,12 @@ def guild_check(client: discord.Client):
     """
     logger.info("Getting the list of currently enrolled guilds.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
 
+    # Get the list of currently enrolled guilds from Discord.
     guilds = client.guilds
+
     # Instantiate a list for the guilds that the bot is currently in.
     new_guilds = []
     reenrolled_guilds = []
@@ -478,15 +537,17 @@ def guild_check(client: discord.Client):
     for guild in guilds:
         new_guilds.append(guild.id)
 
-    # Instantiate the cursor and execute the above command.
+    # Try to connect to the guildList database.
     try:
         cursor.execute("USE guildList")
 
-    # If the guild database doesn't exist.
+    # If the guildList database doesn't exist.
     except ProgrammingError:
         logger.warning("Guild database does not exist. Creating.")
         build_guild_database(cursor)
      
+    # Get all of the guilds and whether or not they're currently enrolled
+    # according to the guildList database.
     cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
 
     # Record the response from the server.
@@ -497,12 +558,19 @@ def guild_check(client: discord.Client):
     for row in records:
         # The need to call row at index 0 is a result of it returning a list of
         # tuples.
+
+        # If the guild is currently enrolled and is marked as such, remove it
+        # because we don't need to do anything with it.
         if row[0] in new_guilds and row[1]:
             new_guilds.remove(row[0])
 
+        # If the guild is currently enrolled but is marked as unenrolled, add it
+        # to the reenrolled list.
         elif row[0] in new_guilds and not row[1]:
             reenrolled_guilds.append(row[0])
 
+        # If the guild is not currently enrolled but is marked as being enrolled
+        # then add it to the unenrolled list.
         elif row[0] not in new_guilds and row[1]:
             unenrolled_guilds.append(row[0])
 
@@ -530,9 +598,11 @@ def guild_check(client: discord.Client):
         cursor.executemany(sql,vals)
         mydb.commit()
     
+    # Mention in the log that there are no new guilds.
     else:
         logger.debug("There are no new guilds to be added.")
 
+    # If there are guilds that are reenrolled, update the entries.
     if len(reenrolled_guilds) > 0:
         logger.info(f"There are {len(reenrolled_guilds)} reenrolled guilds. "+
                     "Updating.")
@@ -546,9 +616,11 @@ def guild_check(client: discord.Client):
         cursor.executemany(sql,vals)
         mydb.commit()
     
+    # Mention in the log that there are no reenrolled guilds.
     else:
         logger.debug("There are no reenrolled guilds to be updated.")
 
+    # If there are guilds that have been unenrolled, update the entries.
     if len(unenrolled_guilds) > 0:
         logger.info(f"There are {len(unenrolled_guilds)} unenrolled guilds. "+
                     "Marking them as such.")
@@ -562,6 +634,7 @@ def guild_check(client: discord.Client):
         cursor.executemany(sql,vals)
         mydb.commit()
     
+    # Mention in the log that there are no unerolled guilds.
     else:
         logger.debug("There are no unenrolled guilds.")
     
@@ -575,13 +648,18 @@ def channel_check(guild: discord.Guild):
     """
     logger.info(f"Checking for new channels in \'{guild.name}\'")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
 
     # Instantiate a list for the channels that the bot can access.
     channel_list = []
     database = "server" + str(guild.id)
+
+    # Try to connect to the database.
     try:
         cursor.execute(f"USE {database}")
+
+    # If it doesn't exist, build it.
     except ProgrammingError:
         logger.warning(f"The \'{guild.name}\' database does not exist. "+
                        "Creating.")
@@ -680,6 +758,7 @@ def channel_check(guild: discord.Guild):
         cursor.executemany(sql, vals)
         mydb.commit()
     
+    # Mention that there are no new channels to be added.
     else:
         logger.debug(f"There are no new channels to add in \'{guild.name}\'.")
 
@@ -692,10 +771,12 @@ def member_check(guild: discord.Guild):
     """
     logger.info(f"Checking the members in \'{guild.name}\'.")
 
+    # Set up the cursor.
     cursor = mydb.cursor()
 
     # Instantiate a list for the member IDs.
     members_id = []
+    
     # Get the member ID of each member within the specific guild.
     for member in guild.members:
         members_id.append(member.id)
@@ -935,5 +1016,6 @@ def get_credentials(spec_database=None) -> MySQLConnection:
     except Exception as err:
         logger.critical(f"Connection failed due to unknown reason.\n{err}")
         exit()
+
 # Create a new mydb connection to be used throughout the project.
 mydb = get_credentials()

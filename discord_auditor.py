@@ -49,24 +49,23 @@ async def on_ready():
 @client.event
 async def on_message(message: discord.Message):
     await new_message(message)
+    
+    # If the message came from the bot itself, ignore it.
     if message.author.id==client.user.id:
         return
 
     # A call for the bot to quit.
+    # If the call came from the owner and from within one of the owner's guilds.
     if (message.content=='$quit' and message.author.id==client_info.owner.id
           and message.guild.owner.id==client_info.owner.id):
-
         logger.info("Bot was told to close by owner. Shutting down.")
         await message.channel.send('Quitting!')
         await client.logout()
 
-    elif (message.author.id==message.guild.owner.id and
-          message.content=="$leave"):
-          await message.guild.leave()
-    
+    # If the message is for the bot to quit but doesn't come from the owner but
+    # it is from one of the owner's guilds.
     elif (message.content=='$quit' and message.author.id!=client_info.owner.id
           and client_info.owner.id==message.guild.owner.id):
-
         possible_messages = []
         
         with open("possible_messages.txt", 'rt') as quips:
@@ -75,6 +74,12 @@ async def on_message(message: discord.Message):
 
         await message.channel.send(choice(possible_messages))
         await new_message(message)
+
+    # A call for the bot to leave a guild.
+    # If the message came from the guild owner.
+    elif (message.author.id==message.guild.owner.id and
+          message.content=="$leave"):
+        await message.guild.leave()
 
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
@@ -187,5 +192,3 @@ except FileNotFoundError:
     password=""
 
 client.run(config.get("bot_credentials","credentials"))
-        
-# https://discordpy.readthedocs.io/en/latest/index.html
