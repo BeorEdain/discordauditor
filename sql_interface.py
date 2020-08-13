@@ -70,7 +70,10 @@ async def new_message(message: discord.Message):
                  "channel.")
 
     # Get the initial connection to the database
-    mydb = get_credentials(message.guild.id)
+    cursor = mydb.cursor()
+
+    logger.debug(f"Switching to server{message.guild.id}")
+    cursor.execute(f"USE server{message.guild.id}")
 
     # Select only the members who have a matching memberID (Hint, there's only
     # ever going to be one as it's the primary key of the member table).
@@ -78,7 +81,6 @@ async def new_message(message: discord.Message):
     val = (message.author.id,)
 
     # Create the cursor and execute the command.
-    cursor = mydb.cursor()
     cursor.execute(sql, val)
 
     # Get the results of the previous command.
@@ -164,13 +166,10 @@ async def new_message(message: discord.Message):
         val = (message.id, message.channel.id, message.author.id,
                message.created_at, message.content)
 
-    # Set up the cursor.
-    cursor = mydb.cursor()
-
     # Execute the command and commit it to the database.
     cursor.execute(sql, val)
     mydb.commit()
-    mydb.close()
+    cursor.close()
 
 def edited_message(message: discord.Message):
     """
@@ -178,8 +177,10 @@ def edited_message(message: discord.Message):
     message: The message that has been edited.
     """
     # Get the initial connection to the database.
-    connection = get_credentials(message.guild.id)
-
+    cursor = mydb.cursor()
+    
+    cursor.execute(f"USE server{message.guild.id}")
+        
     current_time = datetime.utcnow().strftime(time_format)
 
     logger.info(f"\'{message.author.name}\' edited a message in "+
@@ -191,10 +192,9 @@ def edited_message(message: discord.Message):
     val = (True,current_time,message.id)
 
     # Set up the cursor, execute the command, then close the connection.
-    cursor = connection.cursor()
     cursor.execute(sql,val)
-    connection.commit()
-    connection.close()
+    mydb.commit()
+    cursor.close()
 
 def deleted_message(message: discord.Message):
     """
@@ -202,7 +202,9 @@ def deleted_message(message: discord.Message):
     message: The message that has been deleted.
     """
     # Get the initial connection to the database.
-    connection = get_credentials(message.guild.id)
+    cursor = mydb.cursor()
+
+    cursor.execute(f"USE server{message.guild.id}")
 
     # Get the current UTC time to record when the message was deleted.
     current_time = datetime.utcnow().strftime(time_format)
@@ -214,10 +216,9 @@ def deleted_message(message: discord.Message):
     sql = "UPDATE Messages SET isDeleted=%s, dateDeleted=%s WHERE messageID=%s"
     val = (True,current_time,message.id)
 
-    cursor = connection.cursor()
     cursor.execute(sql,val)
-    connection.commit()
-    connection.close()
+    mydb.commit()
+    cursor.close()
 
 def voice_activity(member: discord.Member, before: discord.VoiceState,
                  after: discord.VoiceState):
@@ -229,8 +230,8 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     after: The voice state. Will be None if the user is leaving the channel.
     """
     # Get the initial credentials for the specific database.
-    mydb = get_credentials(member.guild.id)
     cursor = mydb.cursor()
+    cursor.execute(f"USE server{member.guild.id}")
     
     # Initialize the SQL and value variables as well as get the current time.
     sql = ""
@@ -284,6 +285,7 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     
     # No matter which happens, the command needs to be committed.
     mydb.commit()
+    cursor.close()
 
 async def guild_join(guild: discord.Guild, client: discord.Client):
     """
@@ -292,8 +294,6 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     client: The bot client. Used to get any members that left the server that
     left messages.
     """
-    mydb = get_credentials()
-
     logger.info(f"\'{guild.name}\' has been enrolled.")
 
     cursor = mydb.cursor()
@@ -317,11 +317,11 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
         cursor.execute(sql,val)
         mydb.commit()
 
+    cursor.close()
+
     channel_check(guild)
     member_check(guild)
     await message_check(guild, client)
-
-    mydb.close()
 
 def update_guild(guild: discord.Guild):
     """
@@ -329,7 +329,7 @@ def update_guild(guild: discord.Guild):
     guild: The guild that has been updated.
     """
     logger.info(f"\'{guild.name}\' has been updated.")
-    mydb = get_credentials()
+
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
 
@@ -337,7 +337,7 @@ def update_guild(guild: discord.Guild):
     val = (guild.name,guild.owner.id,guild.id)
     cursor.execute(sql,val)
     mydb.commit()
-    mydb.close()
+    cursor.close()
 
 def guild_leave(guild: discord.Guild):
     """
@@ -346,7 +346,6 @@ def guild_leave(guild: discord.Guild):
     guild: The guild that the bot is no longer enrolled in.
     """
     logger.info(f"\'{guild.name}\' has been unenrolled.")
-    mydb = get_credentials()
 
     cursor = mydb.cursor()
     cursor.execute("USE guildList")
@@ -355,7 +354,7 @@ def guild_leave(guild: discord.Guild):
 
     cursor.execute(sql,val)
     mydb.commit()
-    mydb.close()
+    cursor.close()
 
 def new_channel(channel: discord.TextChannel):
     """
@@ -366,7 +365,9 @@ def new_channel(channel: discord.TextChannel):
                 f"\'{channel.guild.name}\' guild.")
 
     # Get the initial connection to the database.
-    connection = get_credentials(channel.guild.id)
+    cursor = mydb.cursor()
+
+    cursor.execute(f"USE server{channel.guild.id}")
 
     sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
          "channelType,isNSFW,isNews,categoryID) VALUES (%s,%s,%s,%s,%s,%s,%s)")
@@ -375,9 +376,8 @@ def new_channel(channel: discord.TextChannel):
          channel.is_nsfw(),channel.is_news(),channel.category_id)
 
     # Set up the cursor, execute the command, and commit it to the databse.
-    cursor = connection.cursor()
     cursor.execute(sql,val)
-    connection.commit()
+    mydb.commit()
     cursor.close()
 
 def update_channel(channel: discord.TextChannel):
@@ -387,17 +387,19 @@ def update_channel(channel: discord.TextChannel):
     """
     logger.info(f"Channel \'{channel.name}\' has been updated in the "+
                  f"\'{channel.guild.name}\'  guild.")
-    mydb = get_credentials(channel.guild.id)
+
+    cursor = mydb.cursor()
+
+    cursor.execute(f"USE server{channel.guild.id}")
 
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
            "isNews=%s,categoryID=%s WHERE channelID=%s")
     val = (channel.name,channel.topic,channel.is_nsfw(),channel.is_news(),
            channel.category_id,channel.id)
 
-    cursor = mydb.cursor()
     cursor.execute(sql,val)
     mydb.commit()
-    mydb.close()
+    cursor.close()
 
 def delete_channel(channel: discord.TextChannel):
     """
@@ -406,7 +408,10 @@ def delete_channel(channel: discord.TextChannel):
     """
     logger.info(f"Channel \'{channel.name}\' has been deleted from the "+
                 f"\'{channel.guild.name}\' guild.")
-    mydb = get_credentials(channel.guild.id)
+
+    cursor = mydb.cursor()
+
+    cursor.execute(f"USE server{channel.guild.id}")
 
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
     val = (channel.id,)
@@ -414,48 +419,7 @@ def delete_channel(channel: discord.TextChannel):
     cursor = mydb.cursor()
     cursor.execute(sql,val)
     mydb.commit()
-    mydb.close()
-
-def get_credentials(spec_database=None) -> MySQLConnection:
-    """
-    A helper function used to get the credentials for the server, simplifying
-    the process.\n
-    spec_database: The database that the bot is connecting to. By default is
-    None due to the fact that the system is granular. Meaning multiple
-    connections to multiple databases are possible making this option
-    infeasible.
-    """
-    try:
-        logger.debug("Establishing a connection to the database server.")
-        if not spec_database:
-            mydb=connect(
-                host=config.get("database_credentials","address"),
-                user=config.get("database_credentials","username"),
-                password=config.get("database_credentials","password"))
-        
-        else:
-            mydb=connect(
-                host=config.get("database_credentials","address"),
-                user=config.get("database_credentials","username"),
-                password=config.get("database_credentials","password"),
-                database="server"+str(spec_database))
-        
-        return mydb
-
-    # If the connection cannot be established due to input error, log and quit.
-    except ProgrammingError:
-        logger.critical("There was an error with the credentials. "+
-                        "Shutting down.")
-        exit()
-    
-    except InterfaceError:
-        logger.critical("The database server cannot be accessed. "+
-                        "Shutting down.")
-        exit()
-    
-    except Exception as err:
-        logger.critical(f"Connection failed due to unknown reason.\n{err}")
-        exit()
+    cursor.close()
 
 def build_guild_database(cursor):
     """
@@ -501,7 +465,7 @@ def guild_check(client: discord.Client):
     enrolled.
     """
     logger.info("Getting the list of currently enrolled guilds.")
-    mydb = get_credentials()
+
     cursor = mydb.cursor()
 
     guilds = client.guilds
@@ -515,7 +479,6 @@ def guild_check(client: discord.Client):
         new_guilds.append(guild.id)
 
     # Instantiate the cursor and execute the above command.
-    cursor = mydb.cursor()
     try:
         cursor.execute("USE guildList")
 
@@ -566,6 +529,9 @@ def guild_check(client: discord.Client):
 
         cursor.executemany(sql,vals)
         mydb.commit()
+    
+    else:
+        logger.debug("There are no new guilds to be added.")
 
     if len(reenrolled_guilds) > 0:
         logger.info(f"There are {len(reenrolled_guilds)} reenrolled guilds. "+
@@ -579,6 +545,9 @@ def guild_check(client: discord.Client):
 
         cursor.executemany(sql,vals)
         mydb.commit()
+    
+    else:
+        logger.debug("There are no reenrolled guilds to be updated.")
 
     if len(unenrolled_guilds) > 0:
         logger.info(f"There are {len(unenrolled_guilds)} unenrolled guilds. "+
@@ -593,7 +562,10 @@ def guild_check(client: discord.Client):
         cursor.executemany(sql,vals)
         mydb.commit()
     
-    mydb.close()
+    else:
+        logger.debug("There are no unenrolled guilds.")
+    
+    cursor.close()
     logger.info("Guild check complete.")
 
 def channel_check(guild: discord.Guild):
@@ -602,8 +574,9 @@ def channel_check(guild: discord.Guild):
     guild: The guild that the bot will get the channels for.
     """
     logger.info(f"Checking for new channels in \'{guild.name}\'")
-    mydb = get_credentials()
+
     cursor = mydb.cursor()
+
     # Instantiate a list for the channels that the bot can access.
     channel_list = []
     database = "server" + str(guild.id)
@@ -706,8 +679,10 @@ def channel_check(guild: discord.Guild):
         # Add each of the tuples to the database.
         cursor.executemany(sql, vals)
         mydb.commit()
+    
+    else:
+        logger.debug(f"There are no new channels to add in \'{guild.name}\'.")
 
-    mydb.close()
     logger.info("Channel check complete.")
 
 def member_check(guild: discord.Guild):
@@ -716,7 +691,7 @@ def member_check(guild: discord.Guild):
     guild: The guild that the bot will get the members for.
     """
     logger.info(f"Checking the members in \'{guild.name}\'.")
-    mydb = get_credentials()
+
     cursor = mydb.cursor()
 
     # Instantiate a list for the member IDs.
@@ -757,7 +732,11 @@ def member_check(guild: discord.Guild):
         cursor.executemany(sql,members)
         mydb.commit()
 
-    mydb.close()
+    else:
+        logger.info(f"No new members have joined {guild.name} since "+
+                    "reawakening.")
+
+    cursor.close()
     logger.info("Member check complete.")
 
 async def message_check(guild: discord.Guild, client: discord.Client):
@@ -768,11 +747,11 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     left messages.
     """
     logger.info(f"Checking messages in \'{guild.name}\'.")
-    mydb = get_credentials()
-    cursor = mydb.cursor()
     # Instantiate a list for the raw messages.
     raw_messages = []
     # Specify which database to use.
+
+    cursor = mydb.cursor()
     cursor.execute(f"USE server{guild.id}")
 
     # Go through each channel
@@ -893,9 +872,15 @@ async def message_check(guild: discord.Guild, client: discord.Client):
                         message.content))
         
         raw_messages.clear()
+    
+    else:
+        logger.debug("There have been no new messages posted in "+
+                     f"\'{guild.name}\' since reawakening.")
 
     # If there are attachment messages to add to the database.
     if len(to_upload_attach) > 0:
+        logger.debug(f"There are {len(to_upload_attach)} messages with "+
+                     f"attachments to upload in \'{guild.name}\'.")
         sql = ("INSERT INTO Messages (messageID, channelID, authorID,"+
                 "dateCreated, message, hasAttachment, attachmentID,"+
                 "filename, qualifiedName, url) VALUES"+
@@ -906,10 +891,49 @@ async def message_check(guild: discord.Guild, client: discord.Client):
 
     # If there are non-attachment messages to add to the database.
     if len(to_upload_no_attach) > 0:
+        logger.debug(f"There are {len(to_upload_no_attach)} messages with no "+
+                     f"attachments to upload in \'{guild.name}\'.")
         sql = ("INSERT INTO Messages (messageID, channelID, authorID,"+
                 "dateCreated, message) VALUES (%s,%s,%s,%s,%s)")
         
         cursor.executemany(sql, to_upload_no_attach)
         mydb.commit()
-        mydb.close()
+
+    cursor.close()
     logger.info("Message check complete.")
+
+def get_credentials(spec_database=None) -> MySQLConnection:
+    """
+    A helper function used to get the credentials for the server, simplifying
+    the process.\n
+    spec_database: The database that the bot is connecting to. By default is
+    None due to the fact that the system is granular. Meaning multiple
+    connections to multiple databases are possible making this option
+    infeasible.
+    """
+    try:
+        logger.info("Establishing a connection to the database server.")
+        mydb=connect(
+            host=config.get("database_credentials","address"),
+            user=config.get("database_credentials","username"),
+            password=config.get("database_credentials","password"))
+        
+        logger.info("Connection established.")
+        return mydb
+
+    # If the connection cannot be established due to input error, log and quit.
+    except ProgrammingError:
+        logger.critical("There was an error with the credentials. "+
+                        "Shutting down.")
+        exit()
+    
+    except InterfaceError:
+        logger.critical("The database server cannot be accessed. "+
+                        "Shutting down.")
+        exit()
+    
+    except Exception as err:
+        logger.critical(f"Connection failed due to unknown reason.\n{err}")
+        exit()
+# Create a new mydb connection to be used throughout the project.
+mydb = get_credentials()
