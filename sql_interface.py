@@ -5,7 +5,8 @@ from datetime import datetime
 
 import discord
 from mysql.connector import (DatabaseError, IntegrityError, InterfaceError,
-                             MySQLConnection, ProgrammingError, connect)
+                             MySQLConnection, OperationalError,
+                             ProgrammingError, connect)
 
 # Initialize the configuration file in memory.
 config = configparser.ConfigParser()
@@ -40,8 +41,21 @@ logger.setLevel(log_level)
 formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
                                 '%(funcName)s; %(message)s')
 
+log_path = config.get("logger","log_path")
+log_name = config.get("logger","log_filename")
+log_type = config.get("logger","log_file_type")
+log_number = 0
+
+if not os.path.isdir(log_path):
+    os.mkdir(log_path)
+
+while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
+    log_number = log_number + 1
+
+log_filename = log_path + log_name + str(log_number) + "." + log_type
+
 # Set the name of the log file according to the config file.
-handler = logging.FileHandler(config.get("logger","log_filename"))
+handler = logging.FileHandler(log_filename)
 
 # Add the log format to the handler.
 handler.setFormatter(formatter)
@@ -57,8 +71,12 @@ attach_path = config.get("attach_path","path")
 
 # Create the directory if it doesn't exist already.
 if not os.path.isdir(attach_path):
-    logger.warning(f"{attach_path} does not exist. Creating.")
+    logger.warning(f"\'{attach_path}\' does not exist. Creating.")
     os.mkdir(attach_path)
+
+if not os.path.isdir("logs/"):
+    logger.warning("\'logs/\' does not exist. Creating.")
+    os.mkdir("logs/")
 
 async def new_message(message: discord.Message):
     """
@@ -70,11 +88,22 @@ async def new_message(message: discord.Message):
                  "channel.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Switch to the appropriate database.
-    logger.debug(f"Switching to server{message.guild.id}")
-    cursor.execute(f"USE server{message.guild.id}")
+    logger.debug(f"Switching to \'server{message.guild.id}\'.")
+
+    try:
+        cursor.execute(f"USE server{message.guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not connect to {message.guild.id}.\n{err}")
 
     # Select only the members who have a matching memberID (Hint, there's only
     # ever going to be one as it's the primary key of the member table).
@@ -82,10 +111,20 @@ async def new_message(message: discord.Message):
     val = (message.author.id,)
 
     # Create the cursor and execute the command.
-    cursor.execute(sql, val)
+    try:
+        cursor.execute(sql, val)
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     # Get the results of the previous command.
-    records = cursor.fetchall()
+    records = ""
+    
+    try:
+        records = cursor.fetchall()
+
+    except InterfaceError as err:
+        logger.critical(f"Could not fetch the records.\n{err}")
 
     # Fetch all of the information about the member in a digestable manner.
     member_ID = message.author.id
@@ -110,8 +149,14 @@ async def new_message(message: discord.Message):
                          "updated.")
             vals.append((member_name,member_discriminator,member_nickname,
                         member_ID))
-        
-    cursor.executemany(sql,vals)
+
+    try:
+        cursor.executemany(sql,vals)
+    
+    except (ProgrammingError, InterfaceError) as err:
+        logger.critical(f"User {message.author.name} could not be updated.\n"+
+                        f"{err}")
+
     mydb.commit()
 
     # If there is no results, then the member doesn't exist in the table yet, so
@@ -130,7 +175,12 @@ async def new_message(message: discord.Message):
                message.author.nick)
         
         # Execute the command.
-        cursor.execute(sql,val)
+        try:
+            cursor.execute(sql, val)
+        
+        except ProgrammingError as err:
+            logger.critical(f"Could not execute the command {sql}.\n{err}")
+
         mydb.commit()
 
     # Create the command to add the message to the Messages table.
@@ -172,7 +222,12 @@ async def new_message(message: discord.Message):
                message.created_at, message.content)
 
     # Execute the command, commit it to the database, and close the cursor.
-    cursor.execute(sql, val)
+    try:
+        cursor.execute(sql, val)
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
     cursor.close()
 
@@ -182,9 +237,20 @@ def edited_message(message: discord.Message):
     message: The message that has been edited.
     """
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+
+    try:
+        cursor = mydb.cursor()
     
-    cursor.execute(f"USE server{message.guild.id}")
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
+    
+    try:
+        cursor.execute(f"USE server{message.guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"The \'{message.guild.name}\' database could not be "+
+                        f"accessed.\n{err}")
         
     current_time = datetime.utcnow().strftime(time_format)
 
@@ -197,7 +263,12 @@ def edited_message(message: discord.Message):
     val = (True,current_time,message.id)
 
     # Execute the command, commit it to the database, then close the cursor.
-    cursor.execute(sql,val)
+    try:
+        cursor.execute(sql, val)
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
     cursor.close()
 
@@ -207,9 +278,20 @@ def deleted_message(message: discord.Message):
     message: The message that has been deleted.
     """
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
-    cursor.execute(f"USE server{message.guild.id}")
+    try:
+        cursor.execute(f"USE server{message.guild.id}")
+
+    except ProgrammingError as err:
+        logger.critical(f"The \'{message.guild.name}\' database could not be "+
+                        f"accessed.\n{err}")
 
     # Get the current UTC time to record when the message was deleted.
     current_time = datetime.utcnow().strftime(time_format)
@@ -222,7 +304,12 @@ def deleted_message(message: discord.Message):
     val = (True,current_time,message.id)
 
     # Execute the command, commit it to the database, then close the cursor.
-    cursor.execute(sql,val)
+    try:
+        cursor.execute(sql, val)
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
     cursor.close()
 
@@ -236,8 +323,20 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     after: The voice state. Will be None if the user is leaving the channel.
     """
     # Set up the cursor.
-    cursor = mydb.cursor()
-    cursor.execute(f"USE server{member.guild.id}")
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
+
+    try:
+        cursor.execute(f"USE server{member.guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"The \'{member.guild.name}\' database could not be "+
+                        f"accessed.\n{err}")
     
     # Initialize the SQL and value variables as well as get the current time.
     sql = ""
@@ -255,7 +354,12 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
         sql = ("INSERT INTO VoiceActivity (memberID,channelID,dateEntered)"+
                "VALUES (%s,%s,%s)")
         val = (member.id,after.channel.id,time_now)
-        cursor.execute(sql,val)
+
+        try:
+            cursor.execute(sql, val)
+        
+        except ProgrammingError as err:
+            logger.critical(f"Could not execute the command {sql}.\n{err}")
     
     # If the member is entering a voice channel from another voice channel.
     # Meaning if they switch voice channels.
@@ -275,8 +379,13 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
         val=(time_now,member.id,member.id,after.channel.id,time_now)
 
         # Since this is a multiline command, it needs special treatment.
-        for cmd in cursor.execute(sql,val,multi=True):
-            cmd
+        try:
+            for cmd in cursor.execute(sql,val,multi=True):
+                cmd
+    
+        except ProgrammingError as err:
+            logger.critical(f"Could not execute the command {sql}.\n{err}")
+        
 
     # If the member is leaving a voice channel and not going to any other.
     else:
@@ -287,7 +396,12 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
         sql=("UPDATE VoiceActivity SET dateLeft=%s WHERE memberID=%s order by "+
              "ID desc limit 1")
         val=(time_now,member.id)
-        cursor.execute(sql,val)
+
+        try:
+            cursor.execute(sql,val)
+    
+        except ProgrammingError as err:
+            logger.critical(f"Could not execute the command {sql}.\n{err}")
     
     # Commit the command to the database and close the cursor.
     mydb.commit()
@@ -303,10 +417,21 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     logger.info(f"\'{guild.name}\' has been enrolled.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Add the guild to the guildList database.
-    cursor.execute("USE guildList")
+    try:
+        cursor.execute("USE guildList")
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the guildList database.{err}")
+
     sql = ("INSERT INTO Guilds (guildID,guildName,guildOwner,enrolledOn)VALUES"+
           "(%s,%s,%s,%s)")
     val = (guild.id, str(guild.name), guild.owner.id,
@@ -326,7 +451,13 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
                "currentlyEnrolled=True,oustedOn=NULL WHERE guildID=%s")
         val=(guild.name,guild.owner.id,datetime.utcnow().strftime(time_format),
              guild.id)
-        cursor.execute(sql,val)
+
+        try:
+            cursor.execute(sql,val)
+    
+        except ProgrammingError as err:
+            logger.critical(f"Could not execute the command {sql}.\n{err}")
+
         mydb.commit()
 
     # Close the cursor.
@@ -346,15 +477,31 @@ def update_guild(guild: discord.Guild):
     logger.info(f"\'{guild.name}\' has been updated.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the guildList database.
-    cursor.execute("USE guildList")
+    try:
+        cursor.execute("USE guildList")
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the guildList database.\n{err}")
 
     # Update the entry.
     sql = "UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s"
     val = (guild.name,guild.owner.id,guild.id)
-    cursor.execute(sql,val)
+
+    try:
+        cursor.execute(sql,val)
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
 
     # Close the cursor.
@@ -369,15 +516,31 @@ def guild_leave(guild: discord.Guild):
     logger.info(f"\'{guild.name}\' has been unenrolled.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Connecto to the guildList database.
-    cursor.execute("USE guildList")
+    try:
+        cursor.execute("USE guildList")
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the guildList database.\n{err}")
 
     # Update the entry.
     sql = "UPDATE Guilds SET currentlyEnrolled=%s,oustedOn=%s WHERE guildID=%s"
     val = (False,datetime.utcnow().strftime(time_format),guild.id)
-    cursor.execute(sql,val)
+
+    try:
+        cursor.execute(sql,val)
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
 
     # Close the cursor.
@@ -392,10 +555,21 @@ def new_channel(channel: discord.TextChannel):
                 f"\'{channel.guild.name}\' guild.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    cursor.execute(f"USE server{channel.guild.id}")
+    try:
+        cursor.execute(f"USE server{channel.guild.id}")
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                        "database.\n{err}")
 
     # Insert the new channel.
     sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
@@ -405,7 +579,12 @@ def new_channel(channel: discord.TextChannel):
          channel.is_nsfw(),channel.is_news(),channel.category_id)
 
     # Execute the command, commit it to the database, then close the cursor.
-    cursor.execute(sql,val)
+    try:
+        cursor.execute(sql,val)
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
     cursor.close()
 
@@ -415,13 +594,24 @@ def update_channel(channel: discord.TextChannel):
     channel: The channel that has been updated.
     """
     logger.info(f"Channel \'{channel.name}\' has been updated in the "+
-                 f"\'{channel.guild.name}\'  guild.")
+                 f"\'{channel.guild.name}\' guild.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    cursor.execute(f"USE server{channel.guild.id}")
+    try:
+        cursor.execute(f"USE server{channel.guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                        f"database.\n{err}")
 
     # Update the channel with the new information.
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
@@ -430,7 +620,12 @@ def update_channel(channel: discord.TextChannel):
            channel.category_id,channel.id)
 
     # Execute the command, commit it to the database, then close the cursor.
-    cursor.execute(sql,val)
+    try:
+        cursor.execute(sql,val)
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+
     mydb.commit()
     cursor.close()
 
@@ -443,17 +638,31 @@ def delete_channel(channel: discord.TextChannel):
                 f"\'{channel.guild.name}\' guild.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    cursor.execute(f"USE server{channel.guild.id}")
+    try:
+        cursor.execute(f"USE server{channel.guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                        f"database.\n{err}")
 
     # Mark the appropriate channel as deleted.
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
     val = (channel.id,)
 
     # Execute the command, commit it to the database, then close the cursor.
-    cursor.execute(sql,val)
+    try:
+        cursor.execute(sql,val)
+
+    except ProgrammingError as err:
+        logger.critical(f"Could not execute the command {sql}.\n{err}")
+        
     mydb.commit()
     cursor.close()
 
@@ -464,10 +673,11 @@ def build_guild_database(cursor):
     cursor: The cursor for the MYSQL connection so multiple links are not
     needed.
     """
-    logger.info("Building the guild database.")
+    logger.debug("Building the guild database.")
     command = ""
 
     # Get the commands from the file.
+    logger.debug("Accessing the guild_database_creator.sql file")
     with open("sql/guild_database_creator.sql", 'rt') as sql_comm:
         command = sql_comm.read()
     
@@ -489,10 +699,15 @@ def build_server_database(guildID: str, cursor):
     cursor: The cursor for the MySQL connection so multiple links are not
     needed.
     """
-    logger.info(f"Building the {guildID} database.")
+    logger.debug(f"Building the {guildID} database.")
 
     # Create the new database.
-    cursor.execute(f"CREATE DATABASE {guildID}")
+    try:
+        cursor.execute(f"CREATE DATABASE {guildID}")
+    
+    except (DatabaseError, ProgrammingError) as err:
+        logger.critical("There was an issue creating the guild database."+
+                     f"\n{err}")
 
     # Switch to the new database.
     cursor.execute(f"USE {guildID}")
@@ -523,7 +738,13 @@ def guild_check(client: discord.Client):
     logger.info("Getting the list of currently enrolled guilds.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Get the list of currently enrolled guilds from Discord.
     guilds = client.guilds
@@ -548,10 +769,18 @@ def guild_check(client: discord.Client):
      
     # Get all of the guilds and whether or not they're currently enrolled
     # according to the guildList database.
-    cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
+    try:
+        cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
+    
+    except ProgrammingError as err:
+        logger.critical(f"There was an error selecting from Guilds.\n{err}")
 
     # Record the response from the server.
-    records = cursor.fetchall()
+    try:
+        records = cursor.fetchall()
+    
+    except InterfaceError as err:
+        logger.critical(f"There was an error fetching records.\n{err}")
 
     # Go through each record to ensure that all of the currently enrolled guilds
     # are part of the database.
@@ -595,7 +824,12 @@ def guild_check(client: discord.Client):
                          specific_guild.owner.id,
                          datetime.utcnow().strftime(time_format)))
 
-        cursor.executemany(sql,vals)
+        try:
+            cursor.executemany(sql,vals)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
     
     # Mention in the log that there are no new guilds.
@@ -613,7 +847,12 @@ def guild_check(client: discord.Client):
             specific_guild = client.get_guild(guild)
             vals.append((specific_guild.id,))
 
-        cursor.executemany(sql,vals)
+        try:
+            cursor.executemany(sql,vals)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
     
     # Mention in the log that there are no reenrolled guilds.
@@ -631,7 +870,12 @@ def guild_check(client: discord.Client):
             vals.append((datetime.utcnow().strftime(time_format),guild))
 
         # Add each of the tuples to the database.
-        cursor.executemany(sql,vals)
+        try:
+            cursor.executemany(sql,vals)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
     
     # Mention in the log that there are no unerolled guilds.
@@ -646,10 +890,16 @@ def channel_check(guild: discord.Guild):
     Run when there's a need to check a guild's channels.\n
     guild: The guild that the bot will get the channels for.
     """
-    logger.info(f"Checking for new channels in \'{guild.name}\'")
+    logger.info(f"Checking for new channels in \'{guild.name}\'.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Instantiate a list for the channels that the bot can access.
     channel_list = []
@@ -682,9 +932,18 @@ def channel_check(guild: discord.Guild):
 
         # Get the list of members who are currently listed as being in a voice
         # channel.
-        cursor.execute("SELECT memberID FROM VoiceActivity WHERE dateLeft IS "+
-                       "NULL")
-        records = cursor.fetchall()        
+        try:
+            cursor.execute("SELECT memberID FROM VoiceActivity WHERE dateLeft "+
+                           "IS NULL")
+
+        except ProgrammingError as err:
+            logger.critical(f"There was an error selecting members.\n{err}")
+
+        try:
+            records = cursor.fetchall()
+        
+        except InterfaceError as err:
+            logger.critical(f"There was an error retrieving records.\n{err}")
 
         # Go through each user that's marked as in a voice channel.
         for row in records:
@@ -695,7 +954,12 @@ def channel_check(guild: discord.Guild):
                      "order by ID desc limit 1")
                 val=(datetime.utcnow().strftime(time_format),guild.
                      get_member(row[0]).id)
-                cursor.execute(sql,val)
+                try:
+                    cursor.execute(sql,val)
+
+                except Exception as err:
+                    logger.critical(f"There was an error executing a command."+
+                                    f"\n{err}")
 
         # If there are users in the voice channel, then add them to the
         # database.
@@ -703,7 +967,12 @@ def channel_check(guild: discord.Guild):
             sql = ("INSERT INTO VoiceActivity (memberID,channelID,dateEntered)"+
                "VALUES (%s,%s,%s)")
             val = (user.id,channel.id,datetime.utcnow().strftime(time_format))
-            cursor.execute(sql,val)
+            try:
+                cursor.execute(sql,val)
+
+            except Exception as err:
+                logger.critical(f"There was an error executing a command."+
+                                f"\n{err}")
 
         mydb.commit()
 
@@ -711,8 +980,12 @@ def channel_check(guild: discord.Guild):
     sql = "SELECT * FROM Channels"
 
     # Instantiate the cursor and execute the above command.
-    cursor.execute(sql)
-    records = cursor.fetchall()
+    try:
+        cursor.execute(sql)
+        records = cursor.fetchall()
+    
+    except Exception as err:
+        logger.critical(f"There was an issue with the channels.\n{err}")
 
     # Go through each record to ensure that all of the currently enrolled
     # channels are part of the database.
@@ -755,14 +1028,20 @@ def channel_check(guild: discord.Guild):
                             specific_channel.category_id))
         
         # Add each of the tuples to the database.
-        cursor.executemany(sql, vals)
+        try:
+            cursor.executemany(sql,vals)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
     
     # Mention that there are no new channels to be added.
     else:
-        logger.debug(f"There are no new channels to add in \'{guild.name}\'.")
+        logger.debug(f"No new channels have been added in \'{guild.name}\' "+
+                     "since reawakening.")
 
-    logger.info("Channel check complete.")
+    logger.info(f"Channel check in \'{guild.name}\' complete.")
 
 def member_check(guild: discord.Guild):
     """
@@ -772,7 +1051,13 @@ def member_check(guild: discord.Guild):
     logger.info(f"Checking the members in \'{guild.name}\'.")
 
     # Set up the cursor.
-    cursor = mydb.cursor()
+    cursor = ""
+    
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
 
     # Instantiate a list for the member IDs.
     members_id = []
@@ -782,11 +1067,21 @@ def member_check(guild: discord.Guild):
         members_id.append(member.id)
     
     # Specify which database will be used.
-    cursor.execute(f"USE server{guild.id}")
+    try:
+        cursor.execute(f"USE server{guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"There was an issue connecting to the {guild.name} "+
+                        f"database.\n{err}")
     
     # Execute the command to get all of the member IDs from that database.
-    cursor.execute("SELECT * FROM Members")
-    records = cursor.fetchall()
+    try:
+        cursor.execute("SELECT * FROM Members")
+        records = cursor.fetchall()
+    
+    except Exception as err:
+        logger.critical("There was an issue making a selection from members."+
+                        f"\n{err}")
 
     # Go through each record returned and remove it from the ID list if it
     # exists.
@@ -810,11 +1105,17 @@ def member_check(guild: discord.Guild):
                     "reawakening. Adding them now.")
         sql = ("INSERT INTO Members (memberID,memberName,discriminator,"+
                 "isBot,nickname) VALUES (%s,%s,%s,%s,%s)")
-        cursor.executemany(sql,members)
+
+        try:
+            cursor.executemany(sql,members)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
 
     else:
-        logger.info(f"No new members have joined {guild.name} since "+
+        logger.debug(f"No new members have joined \'{guild.name}\' since "+
                     "reawakening.")
 
     cursor.close()
@@ -827,13 +1128,22 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     client: The bot client. Used to get any members that left the server that
     left messages.
     """
-    logger.info(f"Checking messages in \'{guild.name}\'.")
+    logger.info(f"Checking for new messages in \'{guild.name}\'.")
     # Instantiate a list for the raw messages.
     raw_messages = []
     # Specify which database to use.
 
-    cursor = mydb.cursor()
-    cursor.execute(f"USE server{guild.id}")
+    try:
+        cursor = mydb.cursor()
+    
+    except OperationalError:
+        logger.critical("The MySQL connection is unavailable.")
+
+    try:
+        cursor.execute(f"USE server{guild.id}")
+    
+    except ProgrammingError as err:
+        logger.critical(f"There was an issue accessing {guild.name}.\n{err}")
 
     # Go through each channel
     for channel in guild.channels:
@@ -846,8 +1156,13 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     raw_messages.reverse()
 
     # Get a list of messages that are already in the server.
-    cursor.execute("SELECT messageID,hasAttachment,qualifiedName FROM Messages")
-    records = cursor.fetchall()
+    try:
+        cursor.execute("SELECT messageID,hasAttachment,qualifiedName FROM "+
+                       "Messages")
+        records = cursor.fetchall()
+    
+    except Exception as err:
+        logger.critical(f"There was an issue selecting messages.\n{err}")
 
     # Convert tuple'd records from SQL to simple list.
     message_list = []
@@ -878,8 +1193,12 @@ async def message_check(guild: discord.Guild, client: discord.Client):
             deleted_messages.append(row[0])
 
     sql = "SELECT memberID FROM Members"
-    cursor.execute(sql)
-    records = cursor.fetchall()
+    try:
+        cursor.execute(sql)
+        records = cursor.fetchall()
+    
+    except Exception as err:
+        logger.critical(f"There was an issue selecting members.\n{err}")
 
     user_ID_list = []
     for row in records:
@@ -899,7 +1218,12 @@ async def message_check(guild: discord.Guild, client: discord.Client):
         vals.append((user.id,user.name,user.discriminator,user.bot,
                     user.display_name))
     
-    cursor.executemany(sql,vals)
+    try:
+        cursor.executemany(sql,vals)
+
+    except Exception as err:
+        logger.critical(f"There was an error executing a command.\n{err}")
+
     mydb.commit()
 
     sql = "UPDATE Messages SET isDeleted=%s,dateDeleted=%s WHERE messageID=%s"
@@ -907,7 +1231,12 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     for mess in deleted_messages:
         vals.append((True,datetime.utcnow().strftime(time_format),mess))
 
-    cursor.executemany(sql,vals)
+    try:
+        cursor.executemany(sql,vals)
+
+    except Exception as err:
+        logger.critical(f"There was an error executing a command.\n{err}")
+
     mydb.commit()
 
     # Instantiate two lists, one for messages with attachments and one for
@@ -967,7 +1296,12 @@ async def message_check(guild: discord.Guild, client: discord.Client):
                 "filename, qualifiedName, url) VALUES"+
                 "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
         
-        cursor.executemany(sql, to_upload_attach)
+        try:
+            cursor.executemany(sql,to_upload_attach)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
 
     # If there are non-attachment messages to add to the database.
@@ -977,7 +1311,12 @@ async def message_check(guild: discord.Guild, client: discord.Client):
         sql = ("INSERT INTO Messages (messageID, channelID, authorID,"+
                 "dateCreated, message) VALUES (%s,%s,%s,%s,%s)")
         
-        cursor.executemany(sql, to_upload_no_attach)
+        try:
+            cursor.executemany(sql,to_upload_no_attach)
+
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+
         mydb.commit()
 
     cursor.close()
@@ -999,7 +1338,7 @@ def get_credentials(spec_database=None) -> MySQLConnection:
             user=config.get("database_credentials","username"),
             password=config.get("database_credentials","password"))
         
-        logger.info("Connection established.")
+        logger.info("Database server connection established.")
         return mydb
 
     # If the connection cannot be established due to input error, log and quit.

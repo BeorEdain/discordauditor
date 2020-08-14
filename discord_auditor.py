@@ -48,19 +48,12 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    await new_message(message)
-    
     # If the message came from the bot itself, ignore it.
     if message.author.id==client.user.id:
         return
-
-    # A call for the bot to quit.
-    # If the call came from the owner and from within one of the owner's guilds.
-    if (message.content=='$quit' and message.author.id==client_info.owner.id
-          and message.guild.owner.id==client_info.owner.id):
-        logger.info("Bot was told to close by owner. Shutting down.")
-        await message.channel.send('Quitting!')
-        await client.logout()
+    
+    if message.content!="$quit":
+        await new_message(message)
 
     # If the message is for the bot to quit but doesn't come from the owner but
     # it is from one of the owner's guilds.
@@ -74,6 +67,12 @@ async def on_message(message: discord.Message):
 
         await message.channel.send(choice(possible_messages))
         await new_message(message)
+
+    elif (message.content=='$quit' and message.author.id==client_info.owner.id
+          and message.guild.owner.id==client_info.owner.id):
+        logger.info("Bot was told to close by owner. Shutting down.")
+        await message.channel.send('Quitting!')
+        await client.logout()
 
     # A call for the bot to leave a guild.
     # If the message came from the guild owner.
