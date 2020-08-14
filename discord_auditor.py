@@ -21,11 +21,13 @@ config = configparser.ConfigParser()
 
 @client.event
 async def on_ready():
+    # Inform the client that the login was successful.
+    logger.info(f'Client is logged in as {client.user}.')
+
     global client_info
+
     logger.debug("Getting application info.")
     client_info = await client.application_info()
-    # Inform the client that the login was successful.
-    logger.info(f'We have logged in as {client.user}.')
 
     # Check for any new guilds since the bot had been restarted.
     guild_check(client)
