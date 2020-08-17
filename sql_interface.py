@@ -770,38 +770,60 @@ def guild_check(client: discord.Client):
     # Get all of the guilds and whether or not they're currently enrolled
     # according to the guildList database.
     try:
-        cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
+        # cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
+        cursor.execute("SELECT guildID,guildName,guildOwner,currentlyEnrolled "+
+                       "FROM Guilds")
     
     except ProgrammingError as err:
         logger.critical(f"There was an error selecting from Guilds.\n{err}")
 
     # Record the response from the server.
+    records = ""
     try:
         records = cursor.fetchall()
     
     except InterfaceError as err:
         logger.critical(f"There was an error fetching records.\n{err}")
 
+    updated_guilds = []
+
     # Go through each record to ensure that all of the currently enrolled guilds
     # are part of the database.
     for row in records:
-        # The need to call row at index 0 is a result of it returning a list of
-        # tuples.
+        test_guild = client.get_guild(row[0])
+
+        guild_tuple = (test_guild.id,test_guild.name,test_guild.owner.id,True)
+
+        if guild_tuple != row:
+            updated_guilds.append((guild_tuple[1],guild_tuple[2],
+                                   guild_tuple[0]))
 
         # If the guild is currently enrolled and is marked as such, remove it
         # because we don't need to do anything with it.
-        if row[0] in new_guilds and row[1]:
+        if row[0] in new_guilds and row[3]:
             new_guilds.remove(row[0])
 
         # If the guild is currently enrolled but is marked as unenrolled, add it
         # to the reenrolled list.
-        elif row[0] in new_guilds and not row[1]:
+        elif row[0] in new_guilds and not row[3]:
             reenrolled_guilds.append(row[0])
 
         # If the guild is not currently enrolled but is marked as being enrolled
         # then add it to the unenrolled list.
-        elif row[0] not in new_guilds and row[1]:
+        elif row[0] not in new_guilds and row[3]:
             unenrolled_guilds.append(row[0])
+
+    if len(updated_guilds) > 0:
+        logger.info(f"{len(updated_guilds)} guilds have been updated since "+
+                    "reawakening. Updating them now.")
+        
+        sql=("UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s")
+
+        cursor.executemany(sql,updated_guilds)
+        mydb.commit()
+    
+    else:
+        logger.debug("No enrolled guilds have been updated.")
 
     # If there are any left in the list of enrolled guilds.
     if len(new_guilds) > 0:
@@ -987,11 +1009,49 @@ def channel_check(guild: discord.Guild):
     except Exception as err:
         logger.critical(f"There was an issue with the channels.\n{err}")
 
+    updated_channels = []
+
     # Go through each record to ensure that all of the currently enrolled
     # channels are part of the database.
     for row in records:
+        test_channel = guild.get_channel(row[0])
+
+        channel_tuple = ()
+
+        if str(test_channel.type) == "text":
+            channel_tuple=(test_channel.id,test_channel.name,test_channel.topic,
+                           str(test_channel.type),test_channel.is_nsfw(),
+                           test_channel.is_news(),test_channel.category_id)
+
+        else:
+            channel_tuple=(test_channel.id,test_channel.name,"NULL",
+                           str(test_channel.type),False,False,
+                           test_channel.category_id)
+
+        if channel_tuple != row:
+            # Can't just add the channel_tuple to the list as the channelID
+            # needs to be last as that's the order the SQL command requires.
+            updated_channels.append((channel_tuple[1],channel_tuple[2],
+                                     channel_tuple[3],channel_tuple[4],
+                                     channel_tuple[5],channel_tuple[6],
+                                     channel_tuple[0]))
+
         if row[0] in channel_list:
             channel_list.remove(row[0])
+
+    if len(updated_channels) > 0:
+        logger.info(f"{len(updated_channels)} channels have been updated in "+
+                    f"\'{guild.name}\' since reawakening. Updating them now.")
+        
+        sql=("UPDATE Channels SET channelName=%s,channelTopic=%s,"+
+             "channelType=%s,isNSFW=%s,isNews=%s,categoryID=%s WHERE "+
+             "channelID=%s")
+            
+        cursor.executemany(sql,updated_channels)
+
+    else:
+        logger.debug(f"No channels have been modified in \'{guild.name}\' "+
+                     "since reawakening.")
 
     # If there are any left in the list of enrolled channels.
     if len(channel_list) > 0:
@@ -1083,9 +1143,23 @@ def member_check(guild: discord.Guild):
         logger.critical("There was an issue making a selection from members."+
                         f"\n{err}")
 
+    updated_members = []
+
     # Go through each record returned and remove it from the ID list if it
     # exists.
     for row in records:
+        test_member = guild.get_member(row[0])
+
+        if test_member:
+            member_tuple = (test_member.id,test_member.name,
+                            int(test_member.discriminator),int(test_member.bot),
+                            test_member.nick)
+
+            if member_tuple != row:
+                updated_members.append((member_tuple[1],member_tuple[2],
+                                    member_tuple[3],member_tuple[4],
+                                    member_tuple[0]))
+
         if row[0] in members_id:
             members_id.remove(row[0])
 
@@ -1098,6 +1172,20 @@ def member_check(guild: discord.Guild):
         members.append((spec_member.id,spec_member.name,
                         spec_member.discriminator,spec_member.bot,
                         spec_member.nick))
+
+    if len(updated_members) > 0:
+        logger.info(f"{len(updated_members)} members have been updated in "+
+                    f"\'{guild.name}\' since reawakening. Updating them now.")
+        
+        sql=("UPDATE Members SET memberName=%s,discriminator=%s,isBot=%s,"+
+             "nickname=%s WHERE memberID=%s")
+
+        cursor.executemany(sql,updated_members)
+        mydb.commit()
+
+    else:
+        logger.debug(f"No members have been updated in \'{guild.name}\' since "+
+                     "reawakening.")
 
     # If there are members to add to the database, add them.
     if len(members) > 0:
@@ -1157,8 +1245,8 @@ async def message_check(guild: discord.Guild, client: discord.Client):
 
     # Get a list of messages that are already in the server.
     try:
-        cursor.execute("SELECT messageID,hasAttachment,qualifiedName FROM "+
-                       "Messages")
+        cursor.execute("SELECT messageID,hasAttachment,qualifiedName,message "+
+                       "FROM Messages")
         records = cursor.fetchall()
     
     except Exception as err:
