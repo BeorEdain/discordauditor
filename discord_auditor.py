@@ -86,7 +86,7 @@ async def on_message(message: discord.Message):
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
     # Make note that the message was edited.
-    edited_message(before)
+    edited_message(before, after)
 
     # Add the edited message as a new one to ensure message integrity.
     await new_message(after)

@@ -244,10 +244,11 @@ async def new_message(message: discord.Message):
     mydb.commit()
     cursor.close()
 
-def edited_message(message: discord.Message):
+def edited_message(before: discord.Message, after: discord.Message):
     """
     Called when a message is edited in an audited server.\n
-    message: The message that has been edited.
+    before: The previous version of the message that was edited.\n
+    after: The current version of the message that was edited.
     """
     # Set up the cursor.
     cursor = ""
@@ -259,21 +260,20 @@ def edited_message(message: discord.Message):
         logger.critical("The MySQL connection is unavailable.")
     
     try:
-        cursor.execute(f"USE server{message.guild.id}")
+        cursor.execute(f"USE server{before.guild.id}")
     
     except ProgrammingError as err:
-        logger.critical(f"The \'{message.guild.name}\' database could not be "+
+        logger.critical(f"The \'{before.guild.name}\' database could not be "+
                         f"accessed.\n{err}")
         
-    current_time = datetime.utcnow().strftime(time_format)
-
-    logger.info(f"\'{message.author.name}\' edited a message in "+
-                f"\'{message.guild.name}\' in the {message.channel.name} "+
+    logger.info(f"\'{before.author.name}\' edited a message in "+
+                f"\'{before.guild.name}\' in the {before.channel.name} "+
                 "channel.")
 
     # Set the prepared statement to update the appropriate values.
-    sql = "UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s"
-    val = (True,current_time,message.id)
+    sql = ("UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s "+
+           "AND dateEdited IS NULL")
+    val = (True,after.edited_at,before.id)
 
     # Execute the command, commit it to the database, then close the cursor.
     try:
@@ -322,6 +322,8 @@ def deleted_message(message: discord.Message):
     
     except ProgrammingError as err:
         logger.critical(f"Could not execute the command {sql}.\n{err}")
+
+    print("Deleted edited at: ",message.edited_at)
 
     mydb.commit()
     cursor.close()
@@ -1456,7 +1458,7 @@ async def message_check(guild: discord.Guild, client: discord.Client):
                     "now.")
         
         for message in edited_messages:
-            edited_message(message)
+            edited_message(message,message)
             await new_message(message)
 
     else:
