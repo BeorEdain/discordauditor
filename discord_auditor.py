@@ -8,9 +8,10 @@ import discord
 
 from sql_interface import (channel_check, delete_channel, deleted_message,
                            edited_message, guild_check, guild_join,
-                           guild_leave, logger, member_check, message_check,
+                           guild_leave, guild_update, logger, member_check,
+                           member_join, member_update, message_check,
                            new_channel, new_message, update_channel,
-                           update_guild, voice_activity)
+                           user_update, voice_activity)
 
 logger.info("Initializing discord client.")
 client = discord.Client()
@@ -96,6 +97,23 @@ async def on_message_delete(message: discord.Message):
     deleted_message(message)
 
 @client.event
+async def on_member_join(member: discord.Member):
+    # Add the new member to the Members table.
+    member_join(member)
+
+@client.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    # If the user's nickname is changed, update the member in the table.
+    if before.nick != after.nick:
+        member_update(before, after)
+
+@client.event
+async def on_user_update(before: discord.User, after: discord.User):
+    # If the user's name or discriminator changes, update them in the table.
+    if before.name != after.name or before.discriminator != after.discriminator:
+        user_update(before, after)
+
+@client.event
 async def on_voice_state_update(member: discord.Member,
                                 before: discord.VoiceState,
                                 after: discord.VoiceState):
@@ -129,7 +147,7 @@ async def on_guild_join(guild: discord.Guild):
 @client.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):
     # If the name of the guild is changed make note of it.
-    update_guild(after)
+    guild_update(after)
 
 @client.event
 async def on_guild_remove(guild: discord.Guild):
@@ -150,11 +168,25 @@ except FileNotFoundError:
 
     # TODO: Create check to ensure it's one of the appropriate levels.
     log_level="NULL"
-    while log_level.lower() not in ("debug","info","warning","error",
-                                    "critical"):
+    while log_level.lower() not in {"debug","info","warning","error",
+                                    "critical"}:
         log_level=input("What level would you like the log to record"+
                         ",DEBUG, INFO, WARNING, ERROR, or CRITICAL? ")
         config.set("logger","log_level",log_level.upper())
+
+    log_term_output=input("Do you want the bot to output the log to the "+
+                          "console as well as to a file? Y/N: ")
+    
+    while log_term_output.lower() not in {"y","n"}:
+        log_term_output=input("Please enter \"Y\" or \"N\": ")
+
+    if log_term_output.lower() == "y":
+        log_term_output = True
+
+    else:
+        log_term_output = False
+
+    config.set("logger","log_term_output",log_term_output)
 
     # Add [bot_credentials] section.
     config.add_section("bot_credentials")

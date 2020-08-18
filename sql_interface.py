@@ -1,6 +1,7 @@
 import configparser
 import logging
 import os
+import sys
 from datetime import datetime
 
 import discord
@@ -52,6 +53,7 @@ if not os.path.isdir(log_path):
 while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
     log_number = log_number + 1
 
+# Build the file name for the log.
 log_filename = log_path + log_name + str(log_number) + "." + log_type
 
 # Set the name of the log file according to the config file.
@@ -62,6 +64,13 @@ handler.setFormatter(formatter)
 
 # Add the handler to the logger.
 logger.addHandler(handler)
+
+# If the config specifies to use the console as well as a file to output.
+if config.get("logger","log_term_output"):
+    handler2 = logging.StreamHandler(sys.stdout)
+    handler2.setLevel(log_level)
+    handler2.setFormatter(formatter)
+    logger.addHandler(handler2)        
 
 # Set the appropriate time format for both MySQL and Discord.
 time_format = "%Y-%m-%d %H:%M:%S"
@@ -74,6 +83,7 @@ if not os.path.isdir(attach_path):
     logger.warning(f"\'{attach_path}\' does not exist. Creating.")
     os.mkdir(attach_path)
 
+# Create the logs/ directory if it doesn't exist already.
 if not os.path.isdir("logs/"):
     logger.warning("\'logs/\' does not exist. Creating.")
     os.mkdir("logs/")
@@ -90,6 +100,7 @@ async def new_message(message: discord.Message):
     # Set up the cursor.
     cursor = ""
 
+    # Try to set up the cursor.
     try:
         cursor = mydb.cursor()
     
@@ -99,6 +110,7 @@ async def new_message(message: discord.Message):
     # Switch to the appropriate database.
     logger.debug(f"Switching to \'server{message.guild.id}\'.")
 
+    # Try to use the guild database.
     try:
         cursor.execute(f"USE server{message.guild.id}")
     
@@ -110,16 +122,17 @@ async def new_message(message: discord.Message):
     sql = "SELECT * FROM Members WHERE memberID = %s"
     val = (message.author.id,)
 
-    # Create the cursor and execute the command.
+    # Execute the command.
     try:
         cursor.execute(sql, val)
     
     except ProgrammingError as err:
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
-    # Get the results of the previous command.
+    # Initialize the records so they can be in a try/except catch.
     records = ""
     
+    # Try to get all of the records.
     try:
         records = cursor.fetchall()
 
@@ -313,6 +326,90 @@ def deleted_message(message: discord.Message):
     mydb.commit()
     cursor.close()
 
+def member_join(member: discord.Member):
+    """
+    Called when a new member joins a guild.\n
+    member: The member who joined the guild.
+    """
+    logger.info(f"User \'{member.name}\' has joined \'{member.guild.name}\'.")
+
+    cursor = mydb.cursor()
+
+    sql = f"USE server{member.guild.id}"
+
+    logger.debug(f"Switching to \'server{member.guild.id}\'.")
+    cursor.execute(sql)
+
+    sql = ("INSERT INTO Members (memberID,memberName,discriminator,isBot,"+
+          "nickname) VALUES (%s,%s,%s,%s,%s)")
+    val = (member.id,member.name,member.discriminator,member.bot,member.nick)
+
+    try:
+        cursor.execute(sql,val)
+
+    except IntegrityError:
+        logger.warning(f"User \'{member.name}\' has rejoined "+
+                       f"\'{member.guild.name}\'. Updating them now.")
+        
+        sql = ("UPDATE Members SET memberName=%s,discriminator=%s,nickname=%s "+
+               "WHERE memberID=%s")
+
+        val = (member.name,member.discriminator,member.nick,member.id)
+
+        cursor.execute(sql,val)
+
+    mydb.commit()
+    cursor.close()
+
+def member_update(before: discord.Member, after: discord.Member):
+    """
+    Called when a member updates their nickname.\n
+    before: The member before the change.\n
+    after:  The member after the change.
+    """
+    logger.info(f"User \'{before.name}\' changed their nickname to "+
+                f"\'{after.nick}\' in \'{before.guild.name}\'.")
+
+    cursor = mydb.cursor()
+
+    sql = f"USE server{before.guild.id}"
+
+    logger.debug(f"Switching to \'server{before.guild.id}\'.")
+    cursor.execute(sql)
+
+    sql = ("UPDATE Members SET nickname=%s WHERE memberID=%s")
+    
+    val = (after.nick, before.id)
+
+    cursor.execute(sql,val)
+    mydb.commit()
+    cursor.close()
+
+def user_update(before: discord.User, after: discord.User):
+    """
+    Called when a user changes their username or discriminator.\n
+    before: The member before the change.\n
+    after:  The member after the change.
+    """
+    logger.info(f"User \'{before.name}#{before.discriminator}\' has been "+
+                f"changed to \'{after.name}#{after.discriminator}")
+    
+    cursor = mydb.cursor()
+
+    sql = f"USE server{before.guild.id}"
+
+    logger.debug(f"Switching to \'server{before.guild.id}\'.")
+    cursor.execute(sql)
+
+    sql = ("UPDATE Members SET memberName=%s,discriminator=%s WHERE "+
+           "memberID=%s")
+    
+    val = (after.name, after.discriminator, before.id)
+
+    cursor.execute(sql,val)
+    mydb.commit()
+    cursor.close()
+
 def voice_activity(member: discord.Member, before: discord.VoiceState,
                  after: discord.VoiceState):
     """
@@ -469,7 +566,7 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     member_check(guild)
     await message_check(guild, client)
 
-def update_guild(guild: discord.Guild):
+def guild_update(guild: discord.Guild):
     """
     Called when a guild is updated.\n
     guild: The guild that has been updated.
@@ -770,7 +867,6 @@ def guild_check(client: discord.Client):
     # Get all of the guilds and whether or not they're currently enrolled
     # according to the guildList database.
     try:
-        # cursor.execute("SELECT guildID,currentlyEnrolled FROM Guilds")
         cursor.execute("SELECT guildID,guildName,guildOwner,currentlyEnrolled "+
                        "FROM Guilds")
     
@@ -1212,14 +1308,13 @@ def member_check(guild: discord.Guild):
 async def message_check(guild: discord.Guild, client: discord.Client):
     """
     Run when there's a need to check a guild's messages.\n
-    guild: The guild that the bot will get the messages for.
+    guild: The guild that the bot will get the messages for.\n
     client: The bot client. Used to get any members that left the server that
     left messages.
     """
     logger.info(f"Checking for new messages in \'{guild.name}\'.")
     # Instantiate a list for the raw messages.
     raw_messages = []
-    # Specify which database to use.
 
     try:
         cursor = mydb.cursor()
@@ -1227,6 +1322,7 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
+    # Specify which database to use.
     try:
         cursor.execute(f"USE server{guild.id}")
     
@@ -1264,9 +1360,14 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     attachment_list = []
     message_ID_list = []
     deleted_messages = []
+    edited_messages = []
 
     raw_users = []
     for mess in raw_messages:
+        if not next((v for i,v in enumerate(records) if v[3]==mess.content),
+                    None):
+            edited_messages.append(mess)
+
         raw_users.append(mess.author.id)
         if mess.id not in message_list:
             clean_messages.append(mess)
@@ -1348,6 +1449,19 @@ async def message_check(guild: discord.Guild, client: discord.Client):
         if not os.path.isfile(f"{directory}{attachment.attachments[0].id}"+
                               f"{attachment.attachments[0].filename}"):
             await discord.Attachment.save(attachment.attachments[0], filename)
+
+    if len(edited_messages) > 0:
+        logger.info(f"There have been {len(edited_messages)} messages edited "+
+                    f"in \'{guild.name}\' since reawakening. Updating them "+
+                    "now.")
+        
+        for message in edited_messages:
+            edited_message(message)
+            await new_message(message)
+
+    else:
+        logger.debug(f"No messages have been edited in \'{guild.name}\' since "+
+                     "reawakening.")
 
     # If there are messages to add.
     if len(clean_messages) > 0:
