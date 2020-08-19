@@ -244,11 +244,10 @@ async def new_message(message: discord.Message):
     mydb.commit()
     cursor.close()
 
-def edited_message(before: discord.Message, after: discord.Message):
+def edited_message(message: discord.Message):
     """
     Called when a message is edited in an audited server.\n
-    before: The previous version of the message that was edited.\n
-    after: The current version of the message that was edited.
+    message: The current version of the message that was edited.
     """
     # Set up the cursor.
     cursor = ""
@@ -260,20 +259,20 @@ def edited_message(before: discord.Message, after: discord.Message):
         logger.critical("The MySQL connection is unavailable.")
     
     try:
-        cursor.execute(f"USE server{before.guild.id}")
+        cursor.execute(f"USE server{message.guild.id}")
     
     except ProgrammingError as err:
-        logger.critical(f"The \'{before.guild.name}\' database could not be "+
+        logger.critical(f"The \'{message.guild.name}\' database could not be "+
                         f"accessed.\n{err}")
         
-    logger.info(f"\'{before.author.name}\' edited a message in "+
-                f"\'{before.guild.name}\' in the {before.channel.name} "+
+    logger.info(f"\'{message.author.name}\' edited a message in "+
+                f"\'{message.guild.name}\' in the {message.channel.name} "+
                 "channel.")
 
     # Set the prepared statement to update the appropriate values.
     sql = ("UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s "+
            "AND dateEdited IS NULL")
-    val = (True,after.edited_at,before.id)
+    val = (True,message.edited_at,message.id)
 
     # Execute the command, commit it to the database, then close the cursor.
     try:
@@ -322,8 +321,6 @@ def deleted_message(message: discord.Message):
     
     except ProgrammingError as err:
         logger.critical(f"Could not execute the command {sql}.\n{err}")
-
-    print("Deleted edited at: ",message.edited_at)
 
     mydb.commit()
     cursor.close()
@@ -506,12 +503,10 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     mydb.commit()
     cursor.close()
 
-async def guild_join(guild: discord.Guild, client: discord.Client):
+async def guild_join(guild: discord.Guild):
     """
     Called when a new guild is added.\n
     gulid: The new guild that has been enrolled.
-    client: The bot client. Used to get any members that left the server that
-    left messages.
     """
     logger.info(f"\'{guild.name}\' has been enrolled.")
 
@@ -566,7 +561,7 @@ async def guild_join(guild: discord.Guild, client: discord.Client):
     # guild.
     channel_check(guild)
     member_check(guild)
-    await message_check(guild, client)
+    await message_check(guild)
 
 def guild_update(guild: discord.Guild):
     """
@@ -911,18 +906,6 @@ def guild_check(client: discord.Client):
         elif row[0] not in new_guilds and row[3]:
             unenrolled_guilds.append(row[0])
 
-    if len(updated_guilds) > 0:
-        logger.info(f"{len(updated_guilds)} guilds have been updated since "+
-                    "reawakening. Updating them now.")
-        
-        sql=("UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s")
-
-        cursor.executemany(sql,updated_guilds)
-        mydb.commit()
-    
-    else:
-        logger.debug("No enrolled guilds have been updated.")
-
     # If there are any left in the list of enrolled guilds.
     if len(new_guilds) > 0:
         logger.info(f"There are {len(new_guilds)} new guilds. Adding.")
@@ -955,6 +938,18 @@ def guild_check(client: discord.Client):
     # Mention in the log that there are no new guilds.
     else:
         logger.debug("There are no new guilds to be added.")
+
+    if len(updated_guilds) > 0:
+        logger.info(f"{len(updated_guilds)} guilds have been updated since "+
+                    "reawakening. Updating them now.")
+        
+        sql=("UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s")
+
+        cursor.executemany(sql,updated_guilds)
+        mydb.commit()
+    
+    else:
+        logger.debug("No enrolled guilds have been updated.")
 
     # If there are guilds that are reenrolled, update the entries.
     if len(reenrolled_guilds) > 0:
@@ -1010,7 +1005,7 @@ def channel_check(guild: discord.Guild):
     Run when there's a need to check a guild's channels.\n
     guild: The guild that the bot will get the channels for.
     """
-    logger.info(f"Checking for new channels in \'{guild.name}\'.")
+    logger.info(f"Checking for channel changes in \'{guild.name}\'.")
 
     # Set up the cursor.
     cursor = ""
@@ -1137,20 +1132,6 @@ def channel_check(guild: discord.Guild):
         if row[0] in channel_list:
             channel_list.remove(row[0])
 
-    if len(updated_channels) > 0:
-        logger.info(f"{len(updated_channels)} channels have been updated in "+
-                    f"\'{guild.name}\' since reawakening. Updating them now.")
-        
-        sql=("UPDATE Channels SET channelName=%s,channelTopic=%s,"+
-             "channelType=%s,isNSFW=%s,isNews=%s,categoryID=%s WHERE "+
-             "channelID=%s")
-            
-        cursor.executemany(sql,updated_channels)
-
-    else:
-        logger.debug(f"No channels have been modified in \'{guild.name}\' "+
-                     "since reawakening.")
-
     # If there are any left in the list of enrolled channels.
     if len(channel_list) > 0:
         logger.info(f"There have been {len(channel_list)} channels created in "+
@@ -1199,6 +1180,20 @@ def channel_check(guild: discord.Guild):
         logger.debug(f"No new channels have been added in \'{guild.name}\' "+
                      "since reawakening.")
 
+    if len(updated_channels) > 0:
+        logger.info(f"{len(updated_channels)} channels have been updated in "+
+                    f"\'{guild.name}\' since reawakening. Updating them now.")
+        
+        sql=("UPDATE Channels SET channelName=%s,channelTopic=%s,"+
+             "channelType=%s,isNSFW=%s,isNews=%s,categoryID=%s WHERE "+
+             "channelID=%s")
+            
+        cursor.executemany(sql,updated_channels)
+
+    else:
+        logger.debug(f"No channels have been modified in \'{guild.name}\' "+
+                     "since reawakening.")
+
     logger.info(f"Channel check in \'{guild.name}\' complete.")
 
 def member_check(guild: discord.Guild):
@@ -1206,7 +1201,7 @@ def member_check(guild: discord.Guild):
     Run when there's a need to check for new members.\n
     guild: The guild that the bot will get the members for.
     """
-    logger.info(f"Checking the members in \'{guild.name}\'.")
+    logger.info(f"Checking for member changes in \'{guild.name}\'.")
 
     # Set up the cursor.
     cursor = ""
@@ -1271,20 +1266,6 @@ def member_check(guild: discord.Guild):
                         spec_member.discriminator,spec_member.bot,
                         spec_member.nick))
 
-    if len(updated_members) > 0:
-        logger.info(f"{len(updated_members)} members have been updated in "+
-                    f"\'{guild.name}\' since reawakening. Updating them now.")
-        
-        sql=("UPDATE Members SET memberName=%s,discriminator=%s,isBot=%s,"+
-             "nickname=%s WHERE memberID=%s")
-
-        cursor.executemany(sql,updated_members)
-        mydb.commit()
-
-    else:
-        logger.debug(f"No members have been updated in \'{guild.name}\' since "+
-                     "reawakening.")
-
     # If there are members to add to the database, add them.
     if len(members) > 0:
         logger.info(f"{len(members)} have joined \'{guild.name}\' since "+
@@ -1304,30 +1285,41 @@ def member_check(guild: discord.Guild):
         logger.debug(f"No new members have joined \'{guild.name}\' since "+
                     "reawakening.")
 
-    cursor.close()
-    logger.info("Member check complete.")
+    if len(updated_members) > 0:
+        logger.info(f"{len(updated_members)} members have been updated in "+
+                    f"\'{guild.name}\' since reawakening. Updating them now.")
+        
+        sql=("UPDATE Members SET memberName=%s,discriminator=%s,isBot=%s,"+
+             "nickname=%s WHERE memberID=%s")
 
-async def message_check(guild: discord.Guild, client: discord.Client):
+        cursor.executemany(sql,updated_members)
+        mydb.commit()
+
+    else:
+        logger.debug(f"No members have been updated in \'{guild.name}\' since "+
+                     "reawakening.")
+
+    cursor.close()
+    logger.info(f"Member check complete in \'{guild.name}\' complete.")
+
+async def message_check(guild: discord.Guild):
     """
     Run when there's a need to check a guild's messages.\n
     guild: The guild that the bot will get the messages for.\n
-    client: The bot client. Used to get any members that left the server that
-    left messages.
     """
-    logger.info(f"Checking for new messages in \'{guild.name}\'.")
+    logger.info(f"Checking for message changes in \'{guild.name}\'.")
     # Instantiate a list for the raw messages.
     raw_messages = []
 
+    # Set up the cursor.
     try:
         cursor = mydb.cursor()
-    
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
     # Specify which database to use.
     try:
         cursor.execute(f"USE server{guild.id}")
-    
     except ProgrammingError as err:
         logger.critical(f"There was an issue accessing {guild.name}.\n{err}")
 
@@ -1335,6 +1327,8 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     for channel in guild.channels:
         # Only worry about text channels.
         if type(channel) == discord.channel.TextChannel:
+            logger.debug(f"Getting messages from the \'{channel.name}\' "+
+                         "channel.")
             raw_messages = (raw_messages +
                             await channel.history(limit=None).flatten())
 
@@ -1342,154 +1336,95 @@ async def message_check(guild: discord.Guild, client: discord.Client):
     raw_messages.reverse()
 
     # Get a list of messages that are already in the server.
+    message_records = []
     try:
         cursor.execute("SELECT messageID,hasAttachment,qualifiedName,message "+
-                       "FROM Messages")
-        records = cursor.fetchall()
-    
+                       "FROM Messages WHERE isDeleted=0")
+        message_records = cursor.fetchall()
     except Exception as err:
         logger.critical(f"There was an issue selecting messages.\n{err}")
 
-    # Convert tuple'd records from SQL to simple list.
-    message_list = []
-    for row in records:
-        if row[0] not in message_list:
-            message_list.append(row[0]) 
-
-    # Use that list to remove any messages that are already in the server
-    # from the raw message list.
-    clean_messages = []
-    attachment_list = []
-    message_ID_list = []
-    deleted_messages = []
+    # A slew of lists to hold the values for all of the messages that need to
+    # be adjusted in one way or another.
+    to_upload_attach = []
+    to_upload_no_attach = []
     edited_messages = []
+    deleted_messages = []
+    new_members = []
 
-    raw_users = []
-    for mess in raw_messages:
-        if not next((v for i,v in enumerate(records) if v[3]==mess.content),
-                    None):
-            edited_messages.append(mess)
-
-        raw_users.append(mess.author.id)
-        if mess.id not in message_list:
-            clean_messages.append(mess)
-        
-        message_ID_list.append(mess.id)
-
-        if mess.attachments:
-            attachment_list.append(mess)
-
-    for row in records:
-        if row[0] not in message_ID_list:
-            deleted_messages.append(row[0])
-
+    # Get all of the memberIDs of everyone that is currently listed as being
+    # in this guild.
     sql = "SELECT memberID FROM Members"
+    user_records = []
     try:
         cursor.execute(sql)
-        records = cursor.fetchall()
-    
+        user_records = cursor.fetchall()
     except Exception as err:
         logger.critical(f"There was an issue selecting members.\n{err}")
 
-    user_ID_list = []
-    for row in records:
-        user_ID_list.append(row[0])
-    
-    raw_users = list(dict.fromkeys(raw_users))
+    # Set up the directory for the attachments to be saved to.
+    directory = f"{attach_path}server{guild.id}/"
 
-    for user in user_ID_list:
-        if user in raw_users:
-            raw_users.remove(user)
-    
-    sql = ("INSERT INTO Members (memberID,memberName,discriminator,isBot,"+
-          "nickname) VALUES (%s,%s,%s,%s,%s)")
-    vals = []
-    for userID in raw_users:
-        user = client.get_user(userID)
-        vals.append((user.id,user.name,user.discriminator,user.bot,
-                    user.display_name))
-    
-    try:
-        cursor.executemany(sql,vals)
+    # Go through each message that was obtained from the guild.
+    for mess in raw_messages:
+        # If the message is not yet in the database.
+        if not next((value for index,value in enumerate(message_records) if
+                    value[0]==mess.id),None):
 
-    except Exception as err:
-        logger.critical(f"There was an error executing a command.\n{err}")
-
-    mydb.commit()
-
-    sql = "UPDATE Messages SET isDeleted=%s,dateDeleted=%s WHERE messageID=%s"
-    vals = []
-    for mess in deleted_messages:
-        vals.append((True,datetime.utcnow().strftime(time_format),mess))
-
-    try:
-        cursor.executemany(sql,vals)
-
-    except Exception as err:
-        logger.critical(f"There was an error executing a command.\n{err}")
-
-    mydb.commit()
-
-    # Instantiate two lists, one for messages with attachments and one for
-    # messages without.
-    to_upload_no_attach = []
-    to_upload_attach = []
-
-    directory = attach_path + f"server{guild.id}/"
-
-    # If the attachment directory doesn't exist, create it.
-    if not os.path.isdir(directory):
-        os.mkdir(directory)
-
-    # If there's an attachment.
-    for attachment in attachment_list:
-        # Get the full path and filename for it.
-        filename = (directory + str(attachment.attachments[0].id) +
-                   attachment.attachments[0].filename)
-
-        # If that file doesn't exist, create it.
-        if not os.path.isfile(f"{directory}{attachment.attachments[0].id}"+
-                              f"{attachment.attachments[0].filename}"):
-            await discord.Attachment.save(attachment.attachments[0], filename)
-
-    if len(edited_messages) > 0:
-        logger.info(f"There have been {len(edited_messages)} messages edited "+
-                    f"in \'{guild.name}\' since reawakening. Updating them "+
-                    "now.")
-        
-        for message in edited_messages:
-            edited_message(message,message)
-            await new_message(message)
-
-    else:
-        logger.debug(f"No messages have been edited in \'{guild.name}\' since "+
-                     "reawakening.")
-
-    # If there are messages to add.
-    if len(clean_messages) > 0:
-        logger.info(f"There have been {len(clean_messages)} messages written "+
-                    f"in \'{guild.name}\' since reawakening. Adding them now.")
-        for message in clean_messages:
             # If the message has one or more attachments.
-            if message.attachments:
-                for attachment in message.attachments:
-                    to_upload_attach.append((message.id, message.channel.id,
-                            message.author.id, message.created_at,
-                            message.content, True, attachment.id,
-                            attachment.filename, str(message.id) +
+            if mess.attachments:
+                for attachment in mess.attachments:
+                    # Get the full path and filename for it.
+                    filename = (directory + str(attachment.id) +
+                                attachment.filename)
+                    if not os.path.isfile(filename):
+                        await discord.Attachment.save(attachment,filename)
+
+                    to_upload_attach.append((mess.id, mess.channel.id,
+                            mess.author.id, mess.created_at,
+                            mess.content, True, attachment.id,
+                            attachment.filename, str(mess.id) +
                             attachment.filename, attachment.url))
-            
+                    
             # If the message has no attachments.
             else:
-                to_upload_no_attach.append((message.id, message.channel.id,
-                        message.author.id, message.created_at,
-                        message.content))
-        
-        raw_messages.clear()
-    
-    else:
-        logger.debug("There have been no new messages posted in "+
-                     f"\'{guild.name}\' since reawakening.")
+                to_upload_no_attach.append((mess.id, mess.channel.id,
+                        mess.author.id, mess.created_at, mess.content))
+
+        # If the message is in the database but the contents are different.
+        elif not next((value for index,value in enumerate(message_records) if 
+                    value[3]==mess.content),None):
+            edited_messages.append((True,mess.edited_at,mess.id))
+
+        # If the author is not yet in the Members database and not yet in the
+        # new_members list.
+        if (not next((value for index,value in enumerate(user_records) if
+                     value[0]==mess.author.id),None) and 
+            not next((value for index,value in enumerate(new_members) if
+                      value[0]==mess.author.id),None)):
+            new_members.append((mess.author.id,mess.author.name,
+                         mess.author.discriminator,mess.author.bot,
+                         mess.author.display_name))
+
+    # Go through each of the records from the database to see what is in it but
+    # not in the messages from the guild.
+    for row in message_records:
+        if not next((value for index,value in enumerate(raw_messages) if
+                    value.id==row[0]),None):
+            deleted_messages.append((True,
+                                    datetime.utcnow().strftime(time_format),
+                                    row[0]))
+
+    # Add the new members to the Members database.
+    if len(new_members) > 0:
+        try:
+            sql = ("INSERT INTO Members (memberID,memberName,discriminator,"+
+                   "isBot,nickname) VALUES (%s,%s,%s,%s,%s)")
+            cursor.executemany(sql,new_members)
+        except Exception as err:
+            logger.critical("There was an error adding users to the database."+
+                            f"\n{err}")
+        mydb.commit()
 
     # If there are attachment messages to add to the database.
     if len(to_upload_attach) > 0:
@@ -1502,10 +1437,8 @@ async def message_check(guild: discord.Guild, client: discord.Client):
         
         try:
             cursor.executemany(sql,to_upload_attach)
-
         except Exception as err:
             logger.critical(f"There was an error executing a command.\n{err}")
-
         mydb.commit()
 
     # If there are non-attachment messages to add to the database.
@@ -1517,23 +1450,52 @@ async def message_check(guild: discord.Guild, client: discord.Client):
         
         try:
             cursor.executemany(sql,to_upload_no_attach)
-
         except Exception as err:
             logger.critical(f"There was an error executing a command.\n{err}")
-
         mydb.commit()
 
-    cursor.close()
-    logger.info("Message check complete.")
+    # If there are edited messages to update.
+    if len(edited_messages) > 0:
+        logger.info(f"There have been {len(edited_messages)} messages edited "+
+                    f"in \'{guild.name}\' since reawakening. Updating them "+
+                    "now.")  
+        sql = ("UPDATE Messages SET isEdited=%s,dateEdited=%s WHERE "+
+               "messageID=%s AND dateEdited IS NULL")
+        
+        try:
+            cursor.executemany(sql,edited_messages)
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+        mydb.commit()
 
-def get_credentials(spec_database=None) -> MySQLConnection:
+    else:
+        logger.debug(f"No messages have been edited in \'{guild.name}\' since "+
+                    "reawakening.")
+
+    # If there are deleted messages to update.
+    if len(deleted_messages) > 0:
+        logger.info(f"There have been {len(deleted_messages)} messages "+
+                    f"deleted from \'{guild.name}\' since reawakening. "+
+                    "Updating them now.")
+        sql="UPDATE Messages SET isDeleted=%s,dateDeleted=%s WHERE messageID=%s"
+
+        try:
+            cursor.executemany(sql,deleted_messages)
+        except Exception as err:
+            logger.critical(f"There was an error executing a command.\n{err}")
+        mydb.commit()
+
+    else:
+        logger.debug(f"No messages have been deleted in \'{guild.name}\' "
+                     "since reawakening.")
+
+    cursor.close()
+    logger.info(f"Message check in \'{guild.name}\' complete.")
+
+def get_credentials() -> MySQLConnection:
     """
     A helper function used to get the credentials for the server, simplifying
     the process.\n
-    spec_database: The database that the bot is connecting to. By default is
-    None due to the fact that the system is granular. Meaning multiple
-    connections to multiple databases are possible making this option
-    infeasible.
     """
     try:
         logger.info("Establishing a connection to the database server.")

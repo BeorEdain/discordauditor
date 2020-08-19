@@ -34,6 +34,7 @@ async def on_ready():
     guild_check(client)
 
     for guild in client.guilds:
+        logger.info(f"Checking the \'{guild.name}\' guild.")
         # Check for any new channels within the enrolled guilds since the bot
         # was restarted.
         channel_check(guild)
@@ -44,7 +45,9 @@ async def on_ready():
 
         # Check for any new messages within the enrolled guilds since the bot
         # was restarted.
-        await message_check(guild, client)
+        await message_check(guild)
+
+        logger.info(f"Guild check of \'{guild.name}\' complete.")
 
     # Inform the client that the updates completed and that the bot is waiting.
     logger.info("Update complete. Waiting.")
@@ -86,7 +89,7 @@ async def on_message(message: discord.Message):
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
     # Make note that the message was edited.
-    edited_message(before, after)
+    edited_message(after)
 
     # Add the edited message as a new one to ensure message integrity.
     await new_message(after)
@@ -142,7 +145,7 @@ async def on_guild_channel_delete(channel: discord.TextChannel):
 async def on_guild_join(guild: discord.Guild):
     # Run the entire process to set up a new guild database and add it to the
     # primary guild database.
-    await guild_join(guild, client)
+    await guild_join(guild)
 
 @client.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):
