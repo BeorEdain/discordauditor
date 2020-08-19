@@ -5,6 +5,7 @@ import sys
 from datetime import datetime
 
 import discord
+from discord.ext import commands
 from mysql.connector import (DatabaseError, IntegrityError, InterfaceError,
                              MySQLConnection, OperationalError,
                              ProgrammingError, connect)
@@ -47,9 +48,6 @@ log_name = config.get("logger","log_filename")
 log_type = config.get("logger","log_file_type")
 log_number = 0
 
-if not os.path.isdir(log_path):
-    os.mkdir(log_path)
-
 while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
     log_number = log_number + 1
 
@@ -83,10 +81,10 @@ if not os.path.isdir(attach_path):
     logger.warning(f"\'{attach_path}\' does not exist. Creating.")
     os.mkdir(attach_path)
 
-# Create the logs/ directory if it doesn't exist already.
-if not os.path.isdir("logs/"):
-    logger.warning("\'logs/\' does not exist. Creating.")
-    os.mkdir("logs/")
+# Create the log_path directory if it doesn't exist already.
+if not os.path.isdir(log_path):
+    logger.warning(f"\'{log_path}\' does not exist. Creating.")
+    os.mkdir(log_path)
 
 async def new_message(message: discord.Message):
     """
