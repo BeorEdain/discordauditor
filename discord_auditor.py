@@ -7,12 +7,12 @@ from random import choice
 import discord
 from discord.ext import commands
 
-from sql_interface import (channel_check, delete_channel, deleted_message,
-                           edited_message, guild_check, guild_join,
-                           guild_leave, guild_update, logger, member_check,
-                           member_join, member_update, message_check,
-                           new_channel, new_message, update_channel,
-                           user_update, voice_activity)
+from sql_interface import (channel_check, command_gimme, delete_channel,
+                           deleted_message, edited_message, guild_check,
+                           guild_join, guild_leave, guild_update, logger,
+                           member_check, member_join, member_update,
+                           message_check, mydb, new_channel, new_message,
+                           update_channel, user_update, voice_activity)
 
 logger.info("Initializing discord bot.")
 
@@ -124,6 +124,7 @@ async def quit(ctx: commands.Context):
         logger.info("Bot was told to close by owner. Shutting down.")
         await ctx.send('Quitting!')
         await bot.logout()
+        mydb.close()
 
 @bot.command()
 async def leave(ctx: commands.Context):
@@ -131,6 +132,17 @@ async def leave(ctx: commands.Context):
     # If the message came from the guild owner.
     if ctx.author.id==ctx.guild.owner.id:
         await ctx.guild.leave()
+
+@bot.command()
+async def gimme(ctx: commands.Context, *args: str):
+    request = ()
+
+    if len(args)==7:
+        request = (args[0],args[2],args[3],args[4],args[6])
+    elif len(args)==5:
+        request = (args[0],args[2],args[3],args[4])
+
+    await command_gimme(ctx,request)
 
 @bot.event
 async def on_ready():
@@ -161,8 +173,9 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    # No matter what, if a new message comes in, save it.
-    await new_message(message)
+    # Unless the message is in a DM, save the message.
+    if str(message.channel.type)!="private":
+        await new_message(message)
 
     # If the message is from the bot, don't bother looking for a bot command.
     if message.author.id!=bot.user.id:

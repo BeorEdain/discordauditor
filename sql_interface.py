@@ -1520,5 +1520,107 @@ def get_credentials() -> MySQLConnection:
         logger.critical(f"Connection failed due to unknown reason.\n{err}")
         exit()
 
+async def command_gimme(ctx: commands.Context, request: tuple):
+    # <user/all> <guild> <between> <date1> <date2>
+    # <user/all> <guild> <before/after> <date1>
+    user=request[0]
+    guild=request[1]
+    request_range=request[2]
+
+    try:
+        date1=datetime.strptime(request[3],time_format)
+        print(date1)
+    except ValueError:
+        try:
+            date1=datetime.strptime(request[3],"%Y/%m/%d")
+        except ValueError:
+            await ctx.send("Error. Please enter the dates in either a "+
+                           "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" format "+
+                           "without the quotes.")
+            return
+    
+    date2=""
+
+    if len(request)==5:
+        try:
+            date2=datetime.strptime(request[4],time_format)
+        except ValueError:
+            try:
+                date2=datetime.strptime(request[4],"%Y/%m/%d")
+            except ValueError:
+                await ctx.send("Error. Please enter the dates in either a "+
+                               "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" "+
+                               "format without the quotes.")
+                return
+
+    cursor=mydb.cursor()
+
+    try:
+        guild=int(guild)
+    except ValueError:
+        cursor.execute("USE guildList")
+        sql="SELECT guildID FROM Guilds WHERE guildName=%s"
+        cursor.execute(sql,(guild,))
+        guild=cursor.fetchall()[0][0]
+
+    cursor.execute(f"USE server{guild}")
+
+    try:
+        user=int(user)
+    except ValueError:
+        if user.lower()!="all":
+            user=user.split("#")
+            user[1]=int(user[1])
+            sql=("SELECT memberID FROM Members where memberName=%s AND "+
+                "discriminator=%s")
+            cursor.execute(sql,user)
+            user=cursor.fetchall()[0][0]
+        else:
+            user="*"
+
+    sql=("SELECT messageID,Channels.channelName channelID,Members.memberName "+
+        "authorID,dateCreated,dateEdited,dateDeleted,message,filename,url "+
+        "FROM Messages LEFT JOIN Channels ON (Messages.channelID="+
+        "Channels.channelID) LEFT JOIN Members ON (Messages.authorID="+
+        "Members.memberID) WHERE authorID=%s AND dateCreated ")
+
+    if request_range.lower()=="between":
+        sql=sql+("BETWEEN CAST(%s AS DATETIME) AND "+
+                 "CAST(%s AS DATETIME)")
+    
+    elif request_range.lower()=="before":
+        sql=sql+">= %s"
+    
+    elif request_range.lower()=="after":
+        sql=sql+"<= %s"
+    
+    if len(request)==5:
+        cursor.execute(sql,(user,date1,date2))
+    elif len(request)==4:
+        cursor.execute(sql,(user,date1))
+
+    message_records=cursor.fetchall()
+
+    with open("output.csv","wt") as out_file:
+        out_file.write("Message ID,Channel Name,Member Name,Date Created,"+
+                       "Date Edited,Date Deleted,Message,Filename,URL\n")
+        for record in message_records:
+            out_file.write(str(record[0]) + ",")
+            out_file.write(str(record[1]) + ",")
+            out_file.write(str(record[2]) + ",")
+            out_file.write(str(record[3]) + ",")
+            out_file.write(str(record[4]) + ",")
+            out_file.write(str(record[5]) + ",")
+            out_file.write(str(record[6]) + ",")
+            out_file.write(str(record[7]) + ",")
+            out_file.write(str(record[8]) + "\n")
+
+    discord_file=discord.File("output.csv")
+
+    await ctx.send(content="Here's the content you requested!",
+                   file=discord_file)
+
+    os.remove("output.csv")
+
 # Create a new mydb connection to be used throughout the project.
 mydb = get_credentials()
