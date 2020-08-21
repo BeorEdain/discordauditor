@@ -5,6 +5,7 @@ import sys
 from datetime import datetime
 
 import discord
+import xlwt
 from discord.ext import commands
 from mysql.connector import (DatabaseError, IntegrityError, InterfaceError,
                              MySQLConnection, OperationalError,
@@ -1526,32 +1527,37 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     user=request[0]
     guild=request[1]
     request_range=request[2]
-
-    try:
-        date1=datetime.strptime(request[3],time_format)
-        print(date1)
-    except ValueError:
-        try:
-            date1=datetime.strptime(request[3],"%Y/%m/%d")
-        except ValueError:
-            await ctx.send("Error. Please enter the dates in either a "+
-                           "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" format "+
-                           "without the quotes.")
-            return
-    
+    date1=""
     date2=""
 
-    if len(request)==5:
+    if request_range.lower()!="all" and request_range.lower()!="latest":
         try:
-            date2=datetime.strptime(request[4],time_format)
+            date1=datetime.strptime(request[3],time_format)
         except ValueError:
             try:
-                date2=datetime.strptime(request[4],"%Y/%m/%d")
+                date1=datetime.strptime(request[3],"%Y/%m/%d")
+                date1=date1.replace(hour=00,minute=00,second=00)
             except ValueError:
                 await ctx.send("Error. Please enter the dates in either a "+
-                               "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" "+
-                               "format without the quotes.")
+                            "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" format "+
+                            "without the quotes.")
                 return
+
+        if len(request)==5:
+            try:
+                date2=datetime.strptime(request[4],time_format)
+            except ValueError:
+                try:
+                    date2=datetime.strptime(request[4],"%Y/%m/%d")
+                    date2=date2.replace(hour=23,minute=59,second=59)
+                except ValueError:
+                    await ctx.send("Error. Please enter the dates in either a "+
+                                "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" "+
+                                "format without the quotes.")
+                    return
+
+    elif request_range.lower()=="latest":
+        date1=int(request[3])        
 
     cursor=mydb.cursor()
 
@@ -1565,62 +1571,102 @@ async def command_gimme(ctx: commands.Context, request: tuple):
 
     cursor.execute(f"USE server{guild}")
 
+    sql=("SELECT messageID \"Message ID\",Channels.channelName \"Channel Name\""
+        ",authorID \"Author ID\",CONCAT(Members.memberName,'#',"+
+        "Members.discriminator) \"Author\",dateCreated \"Date Created\","+
+        "dateEdited \"Date Edited\",dateDeleted \"Date Deleted\",message "+
+        "\"Message\",filename \"Filename\",url \"URL\" FROM Messages "+
+	    "LEFT JOIN Channels ON (Messages.channelID=Channels.channelID) "+
+	    "LEFT JOIN Members ON (Messages.authorID=Members.memberID) ")
+
+    if str(user).lower()!="all" or isinstance(date1,datetime):
+        sql+="WHERE "
+
     try:
         user=int(user)
     except ValueError:
         if user.lower()!="all":
             user=user.split("#")
             user[1]=int(user[1])
-            sql=("SELECT memberID FROM Members where memberName=%s AND "+
+            get_user=("SELECT memberID FROM Members where memberName=%s AND "+
                 "discriminator=%s")
-            cursor.execute(sql,user)
+            cursor.execute(get_user,user)
             user=cursor.fetchall()[0][0]
-        else:
-            user="*"
-
-    sql=("SELECT messageID,Channels.channelName channelID,Members.memberName "+
-        "authorID,dateCreated,dateEdited,dateDeleted,message,filename,url "+
-        "FROM Messages LEFT JOIN Channels ON (Messages.channelID="+
-        "Channels.channelID) LEFT JOIN Members ON (Messages.authorID="+
-        "Members.memberID) WHERE authorID=%s AND dateCreated ")
+            sql+="authorID=%s "
+    
+    if isinstance(date1,datetime) and isinstance(user,int):
+        sql+="AND "
+    
+    elif isinstance(date1,int):
+        sql+= "ORDER BY dateCreated DESC LIMIT %s"
 
     if request_range.lower()=="between":
-        sql=sql+("BETWEEN CAST(%s AS DATETIME) AND "+
+        sql+=("dateCreated BETWEEN CAST(%s AS DATETIME) AND "+
                  "CAST(%s AS DATETIME)")
     
     elif request_range.lower()=="before":
-        sql=sql+">= %s"
+        sql+="dateCreated <= %s"
+        date1=date1.replace(hour=23,minute=59,second=59)
     
     elif request_range.lower()=="after":
-        sql=sql+"<= %s"
-    
+        sql=sql+"dateCreated >= %s"
+
     if len(request)==5:
-        cursor.execute(sql,(user,date1,date2))
+        if isinstance(user,int):
+            cursor.execute(sql,(user,date1,date2))
+        else:
+            cursor.execute(sql,(date1,date2))
+
     elif len(request)==4:
-        cursor.execute(sql,(user,date1))
+        if isinstance(user,int):
+            cursor.execute(sql,(user,date1))            
+        else:
+            cursor.execute(sql,(date1,))
+    
+    else:
+        cursor.execute(sql)
 
     message_records=cursor.fetchall()
 
-    with open("output.csv","wt") as out_file:
-        out_file.write("Message ID,Channel Name,Member Name,Date Created,"+
-                       "Date Edited,Date Deleted,Message,Filename,URL\n")
-        for record in message_records:
-            out_file.write(str(record[0]) + ",")
-            out_file.write(str(record[1]) + ",")
-            out_file.write(str(record[2]) + ",")
-            out_file.write(str(record[3]) + ",")
-            out_file.write(str(record[4]) + ",")
-            out_file.write(str(record[5]) + ",")
-            out_file.write(str(record[6]) + ",")
-            out_file.write(str(record[7]) + ",")
-            out_file.write(str(record[8]) + "\n")
+    test_workbook=xlwt.Workbook()
 
-    discord_file=discord.File("output.csv")
+    test_worksheet=test_workbook.add_sheet("output")
+    
+    date_format=xlwt.easyxf(num_format_str="YYYY/MM/DD HH:MM:SS")
+    
+    test_worksheet.write(0,0,"Message ID")
+    test_worksheet.write(0,1,"Channel Name")
+    test_worksheet.write(0,2,"Author ID")
+    test_worksheet.write(0,3,"Author Name")
+    test_worksheet.write(0,4,"Date Created")
+    test_worksheet.write(0,5,"Date Edited")
+    test_worksheet.write(0,6,"Date Deleted")
+    test_worksheet.write(0,7,"Message")
+    test_worksheet.write(0,8,"Filename")
+    test_worksheet.write(0,9,"URL")
+
+    row=1
+    for record in message_records:
+        test_worksheet.write(row,0,str(record[0]))
+        test_worksheet.write(row,1,record[1])
+        test_worksheet.write(row,2,str(record[2]))
+        test_worksheet.write(row,3,record[3])
+        test_worksheet.write(row,4,record[4],date_format)
+        test_worksheet.write(row,5,record[5],date_format)
+        test_worksheet.write(row,6,record[6],date_format)
+        test_worksheet.write(row,7,record[7])
+        test_worksheet.write(row,8,record[8])
+        test_worksheet.write(row,9,record[9])
+        row+=1
+
+    test_workbook.save("output.xls")
+
+    discord_file=discord.File("output.xls")
 
     await ctx.send(content="Here's the content you requested!",
                    file=discord_file)
 
-    os.remove("output.csv")
+    os.remove("output.xls")
 
 # Create a new mydb connection to be used throughout the project.
 mydb = get_credentials()

@@ -106,7 +106,8 @@ except FileNotFoundError:
     credentials=""
     password=""
 
-bot = commands.Bot(command_prefix=config.get("bot","command_prefix"))
+bot_prefix=config.get("bot","command_prefix")
+bot = commands.Bot(command_prefix=bot_prefix)
 bot.owner_id = int(config.get("bot","bot_owner"))
 
 @bot.command()
@@ -120,7 +121,7 @@ async def quit(ctx: commands.Context):
         await ctx.send(choice(possible_messages))
 
     # If the command came from the owner's guild and it was from the owner.
-    elif ctx.author.id==bot.owner_id and ctx.guild.owner.id==bot.owner_id:
+    elif str(ctx.channel.type)=="private" and ctx.author.id==bot.owner_id:
         logger.info("Bot was told to close by owner. Shutting down.")
         await ctx.send('Quitting!')
         await bot.logout()
@@ -139,10 +140,16 @@ async def gimme(ctx: commands.Context, *args: str):
 
     if len(args)==7:
         request = (args[0],args[2],args[3],args[4],args[6])
+        await command_gimme(ctx,request)
     elif len(args)==5:
         request = (args[0],args[2],args[3],args[4])
-
-    await command_gimme(ctx,request)
+        await command_gimme(ctx,request)
+    elif len(args)==4:
+        request = (args[0],args[2],args[3])
+        await command_gimme(ctx,request)
+    else:
+        await ctx.send(f"That command was invalid, please type {bot_prefix}"+
+                      "gimme help for more information and proper formatting.")
 
 @bot.event
 async def on_ready():
