@@ -110,31 +110,26 @@ bot_prefix=config.get("bot","command_prefix")
 bot = commands.Bot(command_prefix=bot_prefix)
 bot.owner_id = int(config.get("bot","bot_owner"))
 
-@bot.command()
+@bot.command(name="quit",help="Shuts the bot down.")
+@commands.dm_only()
+@commands.is_owner()
 async def quit(ctx: commands.Context):
-    # If the command came from the owner's guild but not from the owner.
-    if ctx.author.id!=bot.owner_id and bot.owner_id==ctx.guild.owner.id:
-        possible_messages = []
-        with open("possible_messages.txt", 'rt') as quips:
-            for line in quips:
-                possible_messages.append(line)
-        await ctx.send(choice(possible_messages))
-
     # If the command came from the owner's guild and it was from the owner.
-    elif str(ctx.channel.type)=="private" and ctx.author.id==bot.owner_id:
-        logger.info("Bot was told to close by owner. Shutting down.")
-        await ctx.send('Quitting!')
-        await bot.logout()
-        mydb.close()
+    logger.info("Bot was told to close by owner. Shutting down.")
+    await ctx.send('Quitting!')
+    await bot.logout()
+    mydb.close()
 
-@bot.command()
+@bot.command(name="leave",help="Used by guild owners to remove the bot from "+
+             "their guild.")
 async def leave(ctx: commands.Context):
     # A call for the bot to leave a guild.
     # If the message came from the guild owner.
     if ctx.author.id==ctx.guild.owner.id:
         await ctx.guild.leave()
 
-@bot.command()
+@bot.command(name="gimme",help="Used to retrieve information.")
+@commands.dm_only()
 async def gimme(ctx: commands.Context, *args: str):
     request = ()
 
@@ -150,7 +145,7 @@ async def gimme(ctx: commands.Context, *args: str):
     else:
         await ctx.send(f"That command was invalid, please type {bot_prefix}"+
                       "gimme help for more information and proper formatting.")
-
+    
 @bot.event
 async def on_ready():
     # Inform the bot that the login was successful.
