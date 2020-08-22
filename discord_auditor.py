@@ -1,8 +1,6 @@
 import configparser
 import logging
 import os
-from getpass import getpass
-from random import choice
 
 import discord
 from discord.ext import commands
@@ -18,99 +16,14 @@ logger.info("Initializing discord bot.")
 
 config = configparser.ConfigParser()
 
-try:
-    config.read_file(open(r'config.ini'))
-
-except FileNotFoundError:
-    print("config.ini does not exist. Creating now.")
-
-    # Add [logger] section.
-    config.add_section("logger")
-
-    # Specify the log file type.
-    log_file_type=input("What type of file do you want the log output to be?: ")
-    config.set("logger","log_file_type",log_file_type)
-
-    # Specify the log file name.
-    log_filename=input("What would you like to name the log? ")
-    config.set("logger","log_filename",log_filename)
-
-    # Specify the log level.
-    log_level="NULL"
-    while log_level.lower() not in {"debug","info","warning","error",
-                                    "critical"}:
-        log_level=input("What level would you like the log to record"+
-                        ",DEBUG, INFO, WARNING, ERROR, or CRITICAL?: ")
-        config.set("logger","log_level",log_level.upper())
-
-    # Specify the log save location.
-    log_path=input("Where do you want the log files to be stored?: ")
-    config.set("logger","log_path",log_path)
-
-    # Specify whether the log should output to the console as well as the file.
-    log_term_output=input("Do you want the bot to output the log to the "+
-                          "console as well as to a file? Y/N: ")
-    while log_term_output.lower() not in {"y","n"}:
-        log_term_output=input("Please enter \"Y\" or \"N\": ")
-    if log_term_output.lower() == "y":
-        log_term_output = True
-    else:
-        log_term_output = False
-    config.set("logger","log_term_output",log_term_output)
-
-    # Add [bot] section.
-    config.add_section("bot")
-
-    # specify the bot owner.
-    bot_owner=getpass("Please enter the unique ID of the bot owner. (It will "+
-                      "appear blank. This is intended): ")
-    config.set("bot","bot_owner",bot_owner)
-
-    # Specify the bot command prefix.
-    command_prefix=input("What symbol would you like to use for the command "+
-                         "prefix?: ")
-    config.set("bot","command_prefix",command_prefix)
-    
-    # Specify the bot credentials.
-    credentials=getpass("Please enter the token for the bot to use. (It will "+
-                        "appear blank. This is intended): ")
-    config.set("bot","credentials",credentials)
-
-    # Add [database_credentials] section.
-    config.add_section("database_credentials")
-
-    address=input("Please enter the IP address or hostname of the database "+
-                  "server: ")
-    config.set("database_credentials","address",address)
-
-    username=input("Please enter the username that can access this database: ")
-    config.set("database_credentials","username",username)
-
-    password=getpass(f"Please enter the password for user {username} (It will "+
-                     "appear blank. This is intended): ")
-    config.set("database_credentials","password",password)
-
-    # Add [attach_path] section.
-    config.add_section("attach_path")
-    
-    attach_path=input("Where do you want attachments to be saved? ")
-    config.set("attach_path","path",attach_path)
-
-    with open('config.ini','wt') as config_file:
-        config.write(config_file)
-    
-    config.read_file(open(r'config.ini'))
-
-    # Blank credentials and password in case of leakage.
-    bot_owner=""
-    credentials=""
-    password=""
+config.read_file(open(r'config.ini'))
 
 bot_prefix=config.get("bot","command_prefix")
 bot = commands.Bot(command_prefix=bot_prefix)
 bot.owner_id = int(config.get("bot","bot_owner"))
 
-@bot.command(name="quit",help="Shuts the bot down.")
+@bot.command(name="quit",help="Shuts the bot down. Only the bot owner can "+
+             "use this.",hidden=True)
 @commands.dm_only()
 @commands.is_owner()
 async def quit(ctx: commands.Context):
@@ -128,7 +41,14 @@ async def leave(ctx: commands.Context):
     if ctx.author.id==ctx.guild.owner.id:
         await ctx.guild.leave()
 
-@bot.command(name="gimme",help="Used to retrieve information.")
+@bot.command(name="gimme",brief="Used to retrieve messages from a server.",
+             help="Retrieves the specified information for a given user in a "+
+             "specified server.",usage=f"<user/all> from <guild> <between> "+
+             f"<date1> and <date2>\n{bot_prefix}gimme <user/all> from <guild> "+
+             f"<before/after> <date>\n{bot_prefix}gimme <user/all> from "+
+             "<guild> latest <number>\nAll dates must be in either the "+
+             "YYYY/MM/DD or YYYY/MM/DD HH:MM:SS time formats. All times are "+
+             "in UTC.")
 @commands.dm_only()
 async def gimme(ctx: commands.Context, *args: str):
     request = ()
