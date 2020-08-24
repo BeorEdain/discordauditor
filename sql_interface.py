@@ -1631,6 +1631,14 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     date1=""
     date2=""
 
+    if (request_range.lower()!="all" and request_range.lower()!="latest" and 
+        request_range.lower()!="between" and request_range.lower()!="before" and
+        request_range.lower()!="after"):
+        await ctx.send("The range you sent was invalid. It must be one of the "+
+                       "following: \'before\', \'after\', \'between\', "+
+                       "\'latest\', or \'all\' without the single quotes.")
+        return
+
     # Check if the range is "between", "before", or "after"
     if request_range.lower()!="all" and request_range.lower()!="latest":
         # Try to use the first date as it is.
@@ -1669,7 +1677,7 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     elif request_range.lower()=="latest":
         # Then date1 will actuallly be an integer with the number of messages to
         # get.
-        date1=int(request[3])        
+        date1=int(request[3])
 
     cursor=mydb.cursor()
 
@@ -1681,7 +1689,14 @@ async def command_gimme(ctx: commands.Context, request: tuple):
         cursor.execute("USE guildList")
         sql="SELECT guildID FROM Guilds WHERE guildName=%s"
         cursor.execute(sql,(guild,))
-        guild=cursor.fetchall()[0][0]
+        guild=cursor.fetchall()
+        if len(guild)==0:
+            await ctx.send(f"Sorry, I could not find the {request[1]} server "+
+                           "in my database. Please double check that it's "+
+                           "spelled correctly.")
+            return
+        else:
+            guild=guild[0][0]
 
     # Use the guild.
     cursor.execute(f"USE server{guild}")
@@ -1700,11 +1715,9 @@ async def command_gimme(ctx: commands.Context, request: tuple):
         return
 
     # Build the initial SQL statement.
-    sql=("SELECT messageID \"Message ID\",Channels.channelName \"Channel Name\""
-        ",authorID \"Author ID\",CONCAT(Members.memberName,'#',"+
-        "Members.discriminator) \"Author\",dateCreated \"Date Created\","+
-        "dateEdited \"Date Edited\",dateDeleted \"Date Deleted\",message "+
-        "\"Message\",filename \"Filename\",url \"URL\" FROM Messages "+
+    sql=("SELECT messageID,Channels.channelName,authorID,"+
+         "CONCAT(Members.memberName,'#',Members.discriminator),dateCreated,"+
+         "dateEdited,dateDeleted,message,filename,url FROM Messages "+
 	    "LEFT JOIN Channels ON (Messages.channelID=Channels.channelID) "+
 	    "LEFT JOIN Members ON (Messages.authorID=Members.memberID) ")
 
@@ -1723,8 +1736,15 @@ async def command_gimme(ctx: commands.Context, request: tuple):
             get_user=("SELECT memberID FROM Members where memberName=%s AND "+
                 "discriminator=%s")
             cursor.execute(get_user,user)
-            user=cursor.fetchall()[0][0]
-            sql+="authorID=%s "
+            user=cursor.fetchall()
+            if len(user)==0:
+                await ctx.send(f"Sorry, I could not find user {request[0]} in "+
+                               f"{request[1]}. Either the name was misspelled "+
+                               "or they are not in this server.")
+                return
+            else:
+                user=user[0][0]
+                sql+="authorID=%s "
     
     # If The first date is an actual date (as opposed to being an integer) and
     # the user is a userID (as opposed to the string "all"), then append "AND"
@@ -1812,18 +1832,38 @@ async def command_gimme(ctx: commands.Context, request: tuple):
         test_worksheet.write(row,9,record[9])
         row+=1
 
+    # Build an appropriate name for the file.
+    workbook_name = str(user)
+
+    # Append the guild and the range.
+    workbook_name+="_from_"+str(guild)+"_"+request_range+"_"
+
+    # If the range is "between".
+    if request_range.lower()=="between":
+        # Append both of the dates.
+        workbook_name+=str(date1)+"_and_"+str(date2)+".xls"
+    
+    # If it's anything else.
+    else:
+        # Append the date or number.
+        workbook_name+=str(date1)+".xls"
+
+    # Replace the colons from the datetime and make them hyphens so the text is
+    # appropriate for a filename.
+    workbook_name=str(workbook_name).replace(":","-")
+
     # Save the output.
-    test_workbook.save("output.xls")
+    test_workbook.save(workbook_name)
 
     # Load the file as a Discord File.
-    discord_file=discord.File("output.xls")
+    discord_file=discord.File(workbook_name)
 
     # Send the file to the user from the given context.
     await ctx.send(content="Here's the content you requested!",
                    file=discord_file)
 
     # Delete the file from the hard drive.
-    os.remove("output.xls")
+    os.remove(workbook_name)
 
 # Create a new mydb connection to be used throughout the project.
 mydb = get_credentials()
