@@ -194,15 +194,18 @@ async def new_message(message: discord.Message):
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
-    # Switch to the appropriate database.
-    logger.debug(f"Switching to \'server{message.guild.id}\'.")
+    # Check if the database is already connected
+    if mydb.database != f'server{message.guild.id}':
+        # If the database is not currently the active one, then switch to the
+        # appropriate database.
+        logger.debug(f"Switching to \'server{message.guild.id}\'.")
 
-    # Try to use the guild database.
-    try:
-        cursor.execute(f"USE server{message.guild.id}")
-    
-    except ProgrammingError as err:
-        logger.critical(f"Could not connect to {message.guild.id}.\n{err}")
+        # Try to use the guild database.
+        try:
+            cursor.execute(f"USE server{message.guild.id}")
+        
+        except ProgrammingError as err:
+            logger.critical(f"Could not connect to {message.guild.id}.\n{err}")
 
     # Select only the members who have a matching memberID (Hint, there's only
     # ever going to be one as it's the primary key of the member table).
@@ -345,16 +348,17 @@ def edited_message(message: discord.Message):
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
     
-    try:
-        cursor.execute(f"USE server{message.guild.id}")
-    
-    except ProgrammingError as err:
-        logger.critical(f"The \'{message.guild.name}\' database could not be "+
-                        f"accessed.\n{err}")
+    if mydb.database != f'server{message.guild.id}':
+        try:
+            cursor.execute(f"USE server{message.guild.id}")
         
-    logger.info(f"\'{message.author.name}\' edited a message in "+
-                f"\'{message.guild.name}\' in the {message.channel.name} "+
-                "channel.")
+        except ProgrammingError as err:
+            logger.critical(f"The \'{message.guild.name}\' database could not "+
+                            f"be accessed.\n{err}")
+            
+        logger.info(f"\'{message.author.name}\' edited a message in "+
+                    f"\'{message.guild.name}\' in the {message.channel.name} "+
+                    "channel.")
 
     # Set the prepared statement to update the appropriate values.
     sql = ("UPDATE Messages SET isEdited=%s, dateEdited=%s WHERE messageID=%s "+
@@ -385,18 +389,19 @@ def deleted_message(message: discord.Message):
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
-    try:
-        cursor.execute(f"USE server{message.guild.id}")
+    if mydb.database != f'server{message.guild.id}':
+        try:
+            cursor.execute(f"USE server{message.guild.id}")
 
-    except ProgrammingError as err:
-        logger.critical(f"The \'{message.guild.name}\' database could not be "+
-                        f"accessed.\n{err}")
+        except ProgrammingError as err:
+            logger.critical(f"The \'{message.guild.name}\' database could not "+
+                            f"be accessed.\n{err}")
 
-    # Get the current UTC time to record when the message was deleted.
-    current_time = datetime.utcnow().strftime(time_format)
+        # Get the current UTC time to record when the message was deleted.
+        current_time = datetime.utcnow().strftime(time_format)
 
-    logger.info(f"A message was deleted from \'{message.guild.name}\' in the "+
-                f"{message.channel.name} channel.")
+        logger.info(f"A message was deleted from \'{message.guild.name}\' in "+
+                    f"the {message.channel.name} channel.")
 
     # Set up the prepared statement set the message as deleted and by whom.
     sql = "UPDATE Messages SET isDeleted=%s, dateDeleted=%s WHERE messageID=%s"
@@ -421,10 +426,11 @@ def member_join(member: discord.Member):
 
     cursor = mydb.cursor()
 
-    sql = f"USE server{member.guild.id}"
+    if mydb.database != f'server{member.guild.id}':
+        sql = f"USE server{member.guild.id}"
 
-    logger.debug(f"Switching to \'server{member.guild.id}\'.")
-    cursor.execute(sql)
+        logger.debug(f"Switching to \'server{member.guild.id}\'.")
+        cursor.execute(sql)
 
     sql = ("INSERT INTO Members (memberID,memberName,discriminator,isBot,"+
           "nickname) VALUES (%s,%s,%s,%s,%s)")
@@ -458,10 +464,11 @@ def member_update(before: discord.Member, after: discord.Member):
 
     cursor = mydb.cursor()
 
-    sql = f"USE server{before.guild.id}"
+    if mydb.database != f'server{before.guild.id}':
+        sql = f"USE server{before.guild.id}"
 
-    logger.debug(f"Switching to \'server{before.guild.id}\'.")
-    cursor.execute(sql)
+        logger.debug(f"Switching to \'server{before.guild.id}\'.")
+        cursor.execute(sql)
 
     sql = ("UPDATE Members SET nickname=%s WHERE memberID=%s")
     
@@ -482,10 +489,11 @@ def user_update(before: discord.User, after: discord.User):
     
     cursor = mydb.cursor()
 
-    sql = f"USE server{before.guild.id}"
+    if mydb.database != f'server{before.guild.id}':
+        sql = f"USE server{before.guild.id}"
 
-    logger.debug(f"Switching to \'server{before.guild.id}\'.")
-    cursor.execute(sql)
+        logger.debug(f"Switching to \'server{before.guild.id}\'.")
+        cursor.execute(sql)
 
     sql = ("UPDATE Members SET memberName=%s,discriminator=%s WHERE "+
            "memberID=%s")
@@ -514,12 +522,13 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
-    try:
-        cursor.execute(f"USE server{member.guild.id}")
-    
-    except ProgrammingError as err:
-        logger.critical(f"The \'{member.guild.name}\' database could not be "+
-                        f"accessed.\n{err}")
+    if mydb.database != f'server{member.guild.id}':
+        try:
+            cursor.execute(f"USE server{member.guild.id}")
+        
+        except ProgrammingError as err:
+            logger.critical(f"The \'{member.guild.name}\' database could not "+
+                            f"be accessed.\n{err}")
     
     # Initialize the SQL and value variables as well as get the current time.
     sql = ""
@@ -745,12 +754,13 @@ def new_channel(channel: discord.TextChannel):
         logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    try:
-        cursor.execute(f"USE server{channel.guild.id}")
+    if mydb.database != f'server{channel.guild.id}':
+        try:
+            cursor.execute(f"USE server{channel.guild.id}")
 
-    except ProgrammingError as err:
-        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
-                        "database.\n{err}")
+        except ProgrammingError as err:
+            logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                            "database.\n{err}")
 
     # Insert the new channel.
     sql=("INSERT INTO Channels (channelID,channelName,channelTopic,"+
@@ -787,12 +797,13 @@ def update_channel(channel: discord.TextChannel):
         logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    try:
-        cursor.execute(f"USE server{channel.guild.id}")
-    
-    except ProgrammingError as err:
-        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
-                        f"database.\n{err}")
+    if mydb.database != f'server{channel.guild.id}':
+        try:
+            cursor.execute(f"USE server{channel.guild.id}")
+        
+        except ProgrammingError as err:
+            logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                            f"database.\n{err}")
 
     # Update the channel with the new information.
     sql = ("UPDATE Channels SET channelName=%s,channelTopic=%s,isNSFW=%s,"+
@@ -826,12 +837,13 @@ def delete_channel(channel: discord.TextChannel):
         logger.critical("The MySQL connection is unavailable.")
 
     # Connect to the appropriate database.
-    try:
-        cursor.execute(f"USE server{channel.guild.id}")
-    
-    except ProgrammingError as err:
-        logger.critical(f"Could not access the \'{channel.guild.name}\' "+
-                        f"database.\n{err}")
+    if mydb.database != f'server{channel.guild.id}':
+        try:
+            cursor.execute(f"USE server{channel.guild.id}")
+        
+        except ProgrammingError as err:
+            logger.critical(f"Could not access the \'{channel.guild.name}\' "+
+                            f"database.\n{err}")
 
     # Mark the appropriate channel as deleted.
     sql = ("UPDATE Channels SET isDeleted=True WHERE channelID=%s")
