@@ -1621,7 +1621,9 @@ def get_credentials() -> MySQLConnection:
         logger.critical(f"Connection failed due to unknown reason.\n{err}")
         exit()
 
-async def command_gimme(ctx: commands.Context, request: tuple):
+async def command_gimme(ctx: commands.Context,bot,guild:str,channel:str,
+                        date_range:str,date_one=None,
+                        date_two:datetime=None):
     """
     Called whenever a user whispers the bot to get the noted messages.\n
     ctx: The context in which the message was sent.\n
@@ -1636,79 +1638,32 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     # Get the user requesting the information.
     requesting_user=ctx.author.id
 
-    # Break down the tuple into more easily managed bits.
-    user=request[0]
-    guild=request[1]
-    request_range=request[2]
-    date1=""
-    date2=""
-
-    if (request_range.lower()!="all" and request_range.lower()!="latest" and 
-        request_range.lower()!="between" and request_range.lower()!="before" and
-        request_range.lower()!="after"):
-        await ctx.send("The range you sent was invalid. It must be one of the "+
-                       "following: \'before\', \'after\', \'between\', "+
-                       "\'latest\', or \'all\' without the single quotes.")
-        return
-
-    # Check if the range is "between", "before", or "after"
-    if request_range.lower()!="all" and request_range.lower()!="latest":
-        # Try to use the first date as it is.
-        try:
-            date1=datetime.strptime(request[3],time_format)
-        except ValueError:
-            # If it isn't currently in the precise format, try to make it so.
-            try:
-                date1=datetime.strptime(request[3],"%Y/%m/%d")
-                date1=date1.replace(hour=00,minute=00,second=00)
-            except ValueError:
-                # If the value cannot be converted, let the requester know.
-                await ctx.send("Error. Please enter the dates in either a "+
-                            "\"yyyy/mm/dd\" or \"yyyy/mm/dd hh/mm/ss\" format "+
-                            "without the quotes.")
-                return
-
-        # If the length is 5, check the second date.
-        if len(request)==5:
-            try:
-                # Try to use the second date as it is.
-                date2=datetime.strptime(request[4],time_format)
-            except ValueError:
-                # If it isn't currently in the precise format try to make it so.
-                try:
-                    date2=datetime.strptime(request[4],"%Y/%m/%d")
-                    date2=date2.replace(hour=23,minute=59,second=59)
-                except ValueError:
-                    # If the value cannot be converted, let the requester know.
-                    await ctx.send("Error. Please enter the dates in either a "+
-                                "\"YYYY/MM/DD\" or \"YYYY/MM/DD HH:MM:SS\" "+
-                                "format, without the quotes.")
-                    return
-
-    # If the range is "latest"
-    elif request_range.lower()=="latest":
-        # Then date1 will actuallly be an integer with the number of messages to
-        # get.
-        date1=int(request[3])
-
+    # Set up a cursor.
     cursor=mydb.cursor()
 
-    # Check if the guild is given as an ID.
-    try:
-        guild=int(guild)
-    except ValueError:
-        # If it isn't, get the guildID from the guildList.
-        cursor.execute("USE guildList")
-        sql="SELECT guildID FROM Guilds WHERE guildName=%s"
-        cursor.execute(sql,(guild,))
-        guild=cursor.fetchall()
-        if len(guild)==0:
-            await ctx.send(f"Sorry, I could not find the {request[1]} server "+
-                           "in my database. Please double check that it's "+
-                           "spelled correctly.")
-            return
-        else:
-            guild=guild[0][0]
+    # Get the guild ID from guildList.
+    guild_name=guild
+    cursor.execute("USE guildList")
+    sql="SELECT guildID FROM Guilds WHERE guildName=%s"
+    cursor.execute(sql,(guild,))
+    guild=cursor.fetchall()
+    if len(guild)==0:
+        await ctx.send(f"Sorry, I could not find the {guild_name} server "+
+                        "in my database. Please double check that it's "+
+                        "spelled correctly.")
+        return
+
+    elif len(guild)>1:
+        await ctx.send("Sorry, I found more than one guild named "+
+                       f"{guild_name}. Please enable developer mode and use "+
+                       "the guild's ID.")
+        await ctx.send("Here is a link to help you enable developer mode: "+
+                       "https://support.discord.com/hc/en-us/articles/"+
+                       "206346498-Where-can-I-find-my-User-Server-Message-ID-")
+        return
+
+    else:
+        guild=guild[0][0]
 
     # Use the guild.
     cursor.execute(f"USE server{guild}")
@@ -1722,86 +1677,64 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     # If they are not either a current or previous member of a guild.
     if len(requesting_user)==0:
         # Let them know that they can't request that information.
-        ctx.send("You must be either a current or former member of the guild "+
-                 "that you are trying to get messages from.")
+        await ctx.send("You must be either a current or former member of the "+
+                       "guild that you are trying to get messages from.")
         return
 
+    channel_name=channel
+    sql=("SELECT channelID FROM Channels WHERE channelName=%s AND "+
+         "channelType=text")
+    cursor.execute(sql,(channel,))
+    channel=cursor.fetchall()
+    if len(channel)==0:
+        await ctx.send("Sorry, I could not find a channel named "+
+                       f"{channel_name} in {guild_name}. Please double check "+
+                       "the spelling and try again.")
+        return
+    
+    elif len(channel)>1:
+        await ctx.send("Sorry, I found more than one channel named "+
+                       f"{channel_name}. Please enable developer mode and use "+
+                       "the channel's ID.")
+        await ctx.send("Here is a link to help you enable developer mode: "+
+                       "https://support.discord.com/hc/en-us/articles/"+
+                       "206346498-Where-can-I-find-my-User-Server-Message-ID-")
+        return
+
+    else:
+        channel=channel[0][0]
+
+    guil=bot.get_guild(guild)
+    chan=guil.get_channel(channel)
+
+    if not chan.permissions_for(guil.get_member(ctx.author.id)).read_messages:
+        await ctx.send("You don't have permissions to access this channel.")
+        return
+    
     # Build the initial SQL statement.
     sql=("SELECT messageID,Channels.channelName,authorID,"+
          "CONCAT(Members.memberName,'#',Members.discriminator),dateCreated,"+
          "dateEdited,dateDeleted,message,filename,url FROM Messages "+
-	    "LEFT JOIN Channels ON (Messages.channelID=Channels.channelID) "+
-	    "LEFT JOIN Members ON (Messages.authorID=Members.memberID) ")
+	     "LEFT JOIN Channels ON (Messages.channelID=Channels.channelID) "+
+	     "LEFT JOIN Members ON (Messages.authorID=Members.memberID) WHERE "+
+         "channelID=%s")
 
-    # If there is some sort of limiting factor, add "WHERE".
-    if str(user).lower()!="all" or isinstance(date1,datetime):
-        sql+="WHERE "
-
-    # Check if the user is given as an ID.
-    try:
-        user=int(user)
-    except ValueError:
-        # If it isn't, get the user's ID from the Members table.
-        if user.lower()!="all":
-            user=user.split("#")
-            user[1]=int(user[1])
-            get_user=("SELECT memberID FROM Members where memberName=%s AND "+
-                "discriminator=%s")
-            cursor.execute(get_user,user)
-            user=cursor.fetchall()
-            if len(user)==0:
-                await ctx.send(f"Sorry, I could not find user {request[0]} in "+
-                               f"{request[1]}. Either the name was misspelled "+
-                               "or they are not in this server.")
-                return
-            else:
-                user=user[0][0]
-                sql+="authorID=%s "
+    if date_range=="before":
+        sql+=" AND dateCreated <= %s"
+        cursor.execute(sql,(channel,date_one))
     
-    # If The first date is an actual date (as opposed to being an integer) and
-    # the user is a userID (as opposed to the string "all"), then append "AND"
-    if isinstance(date1,datetime) and isinstance(user,int):
-        sql+="AND "
+    elif date_range=="after":
+        sql+=" AND dateCreated >= %s"
+        cursor.execute(sql,(channel,date_one))
     
-    # If the first date is instead an integer, then set the limiting.
-    elif isinstance(date1,int):
-        sql+= "ORDER BY dateCreated DESC LIMIT %s"
-
-    # If the range is "between", then set the ranges.
-    if request_range.lower()=="between":
-        sql+=("dateCreated BETWEEN CAST(%s AS DATETIME) AND "+
+    elif date_range=="between":
+        sql+=(" AND dateCreated BETWEEN CAST(%s AS DATETIME) AND "+
                  "CAST(%s AS DATETIME)")
-    
-    # If the range is "before", set the range to be less than the set date.
-    elif request_range.lower()=="before":
-        sql+="dateCreated <= %s"
-        date1=date1.replace(hour=23,minute=59,second=59)
-    
-    # If the range is "after", set the range to be greater than the set date.
-    elif request_range.lower()=="after":
-        sql=sql+"dateCreated >= %s"
+        cursor.execute(sql,(channel,date_one,date_two))
 
-    # If the length is 5.
-    if len(request)==5:
-        # and the user is a number (as opposed to "all").
-        if isinstance(user,int):
-            cursor.execute(sql,(user,date1,date2))
-        # If the user is "all".
-        else:
-            cursor.execute(sql,(date1,date2))
-
-    # If the length is 4.
-    elif len(request)==4:
-        # and the user is a number (as opposed to "all").
-        if isinstance(user,int):
-            cursor.execute(sql,(user,date1))            
-        # If the user is "all".
-        else:
-            cursor.execute(sql,(date1,))
-    
-    # If the length is anything else, just execute the command as it is.
-    else:
-        cursor.execute(sql)
+    elif date_range=="latest":
+        sql+= " ORDER BY dateCreated DESC LIMIT %s"
+        cursor.execute(sql,(channel,date_one))
 
     # Get all of the records.
     message_records=cursor.fetchall()
