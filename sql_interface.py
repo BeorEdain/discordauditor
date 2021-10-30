@@ -37,8 +37,8 @@ except FileNotFoundError:
     log_level="NULL"
     while log_level.lower() not in {"debug","info","warning","error",
                                     "critical"}:
-        log_level=input("What level would you like the log to record"+
-                        ",DEBUG, INFO, WARNING, ERROR, or CRITICAL?: ")
+        log_level=input("What level would you like the log to record "+
+                        "DEBUG, INFO, WARNING, ERROR, or CRITICAL?: ")
         config.set("logger","log_level",log_level.upper())
 
     # Specify the log save location.
@@ -624,7 +624,7 @@ async def guild_join(guild: discord.Guild):
 
     sql = ("INSERT INTO Guilds (guildID,guildName,guildOwner,enrolledOn)VALUES"+
           "(%s,%s,%s,%s)")
-    val = (guild.id, str(guild.name), guild.owner.id,
+    val = (guild.id, str(guild.name), guild.owner_id,
            datetime.utcnow().strftime(time_format))
     
     # Try to insert the guild.
@@ -639,7 +639,7 @@ async def guild_join(guild: discord.Guild):
 
         sql=("UPDATE Guilds SET guildName=%s,guildOwner=%s,enrolledOn=%s,"+
                "currentlyEnrolled=True,oustedOn=NULL WHERE guildID=%s")
-        val=(guild.name,guild.owner.id,datetime.utcnow().strftime(time_format),
+        val=(guild.name,guild.owner_id,datetime.utcnow().strftime(time_format),
              guild.id)
 
         try:
@@ -684,7 +684,7 @@ def guild_update(guild: discord.Guild):
 
     # Update the entry.
     sql = "UPDATE Guilds SET guildName=%s,guildOwner=%s WHERE guildID=%s"
-    val = (guild.name,guild.owner.id,guild.id)
+    val = (guild.name,guild.owner_id,guild.id)
 
     try:
         cursor.execute(sql,val)
@@ -950,6 +950,7 @@ def guild_check(client: discord.Client):
     # Go through each guild and grab the ID for it to reference later.
     for guild in guilds:
         new_guilds.append(guild.id)
+        
 
     # Try to connect to the guildList database.
     try:
@@ -984,7 +985,7 @@ def guild_check(client: discord.Client):
     for row in records:
         test_guild = client.get_guild(row[0])
 
-        guild_tuple = (test_guild.id,test_guild.name,test_guild.owner.id,True)
+        guild_tuple = (test_guild.id,test_guild.name,test_guild.owner_id,True)
 
         if guild_tuple != row:
             updated_guilds.append((guild_tuple[1],guild_tuple[2],
@@ -1023,7 +1024,7 @@ def guild_check(client: discord.Client):
             # Add the guild ID and guild name to the second part of the prepared
             # statement as a tuple.
             vals.append((specific_guild.id, specific_guild.name,
-                         specific_guild.owner.id,
+                         specific_guild.owner_id,
                          datetime.utcnow().strftime(time_format)))
 
         try:
@@ -1463,6 +1464,11 @@ async def message_check(guild: discord.Guild):
 
     # Set up the directory for the attachments to be saved to.
     directory = f"{attach_path}server{guild.id}/"
+
+    # Create the directory if it does not exist.
+    if not os.path.isdir(directory):
+        logger.debug(f"{directory} does not exist. Creating now.")
+        os.mkdir(directory)
 
     # Go through each message that was obtained from the guild.
     for mess in raw_messages:

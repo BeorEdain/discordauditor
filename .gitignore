@@ -1,6 +1,7 @@
 # User-defined exclusions
 discordauditor/
 logs/
+attachments/
 .vscode
 config.ini
 

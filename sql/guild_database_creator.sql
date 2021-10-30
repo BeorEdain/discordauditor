@@ -1,4 +1,5 @@
-CREATE DATABASE guildList;
+GRANT ALL ON *.* TO 'robert'@'%';
+FLUSH PRIVILEGES;
 USE guildList;
 CREATE TABLE Guilds (
 	guildID bigint NOT NULL,
