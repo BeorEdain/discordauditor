@@ -1,0 +1,45 @@
+version: '3'
+
+# This docker-compose relies on a .env file which contains user, user_pass,
+# bot_owner, and credentials.
+
+services:
+  discord_auditor_db:
+    container_name: discord-auditor-database
+    image: mysql:latest
+    restart: unless-stopped
+    environment:
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      - MYSQL_USER=${user}
+      - MYSQL_PASSWORD=${user_pass}
+      - MYSQL_DATABASE=guildList
+    ports:
+      - 33060:3306
+    healthcheck:
+      test: mysql guildList --user=${user} --password=${user_pass} --silent --execute "SELECT 1;"
+      interval: 30s
+      timeout: 30s
+      retries: 5  
+    volumes:
+      - ./sql/guild_database_creator.sql:/docker-entrypoint-initdb.d/guild_database_creator.sql
+      - database-volume:/var/lib/mysql
+
+  discord_auditor_bot:
+    container_name: discord-auditor-bot
+    image: discord-auditor-bot:production
+    environment:
+      - user=${user}
+      - password=${user_pass}
+      - bot_owner=${bot_owner}
+      - credentials=${credentials}
+    restart: unless-stopped
+    depends_on:
+      discord_auditor_db:
+        condition: service_healthy
+    volumes:
+      - .:/Discord_Auditor
+      - attachment-volume:/docker/discordauditor-main/Discord_Auditor/attachments
+
+volumes:
+  database-volume:
+  attachment-volume:

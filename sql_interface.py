@@ -313,6 +313,7 @@ async def new_message(message: discord.Message):
                             message.attachments[0].filename)
 
             if not os.path.isfile(directory):
+                logger.debug(f"Saving {attachment.id} to {directory}")
                 await discord.Attachment.save(message.attachments[0],directory)
 
     # If there are no attachments in the message.
@@ -1606,9 +1607,8 @@ def get_credentials() -> MySQLConnection:
         logger.info("Establishing a connection to the database server.")
         mydb=connect(
             host=config.get("database_credentials","address"),
-            user=config.get("database_credentials","username"),
-            password=config.get("database_credentials","password"))
-        
+            user=os.getenv('user'),
+            password=os.getenv('password'))
         logger.info("Database server connection established.")
         return mydb
 

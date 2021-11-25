@@ -20,7 +20,7 @@ config.read_file(open(r'config.ini'))
 
 bot_prefix=config.get("bot","command_prefix")
 bot = commands.Bot(command_prefix=bot_prefix)
-bot.owner_id = int(config.get("bot","bot_owner"))
+bot.owner_id = int(os.getenv('bot_owner'))
 
 @bot.command(name="quit",help="Shuts the bot down. Only the bot owner can "+
              "use this.",hidden=True)
@@ -174,4 +174,4 @@ async def on_guild_remove(guild: discord.Guild):
     # Note if a guild is left for whatever reason.
     guild_leave(guild)
 
-bot.run(config.get("bot","credentials"))
+bot.run(os.getenv('credentials'))
