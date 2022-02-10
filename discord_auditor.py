@@ -1,4 +1,3 @@
-import configparser
 import logging
 import os
 
@@ -14,11 +13,7 @@ from sql_interface import (channel_check, command_gimme, delete_channel,
 
 logger.info("Initializing discord bot.")
 
-config = configparser.ConfigParser()
-
-config.read_file(open(r'config.ini'))
-
-bot_prefix=config.get("bot","command_prefix")
+bot_prefix="$"
 bot = commands.Bot(command_prefix=bot_prefix)
 bot.owner_id = int(os.getenv('bot_owner'))
 
