@@ -42,6 +42,7 @@ services:
         condition: service_healthy
     volumes:
       - attachment-volume:/docker/discordauditor-main/Discord_Auditor/attachments
+      - log-volume:/var/log/discordauditor
 
 volumes:
   database-volume:

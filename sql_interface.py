@@ -39,9 +39,9 @@ logger.setLevel(log_level)
 formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
                                 '%(funcName)s; %(message)s')
 
-log_path = "/var/log/discordauditor"
+log_path = "/var/log/discordauditor/"
 log_name = "DiscordAuditor"
-log_type = ".log"
+log_type = "log"
 log_number = 0
 
 while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
