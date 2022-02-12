@@ -4,7 +4,7 @@ version: '3'
 # bot_owner, and credentials.
 
 services:
-  discord_auditor_db:
+  discord-auditor-db:
     container_name: discord-auditor-database
     image: mysql:latest
     restart: unless-stopped
@@ -24,7 +24,7 @@ services:
       - ./sql/guild_database_creator.sql:/docker-entrypoint-initdb.d/guild_database_creator.sql
       - database-volume:/var/lib/mysql
 
-  discord_auditor_bot:
+  discord-auditor-bot:
     container_name: discord-auditor-bot
     image: discord-auditor-bot:production
     environment:
@@ -32,13 +32,17 @@ services:
       - password=${user_pass}
       - bot_owner=${bot_owner}
       - credentials=${credentials}
+      - log_level=${log_level}
+      - log_path=${log_path}
+      - attach_path=${attach_path}
+      - database_address=${database_address}
     restart: unless-stopped
     depends_on:
-      discord_auditor_db:
+      discord-auditor-db:
         condition: service_healthy
     volumes:
-      - .:/Discord_Auditor
       - attachment-volume:/docker/discordauditor-main/Discord_Auditor/attachments
+      - log-volume:/var/log/discordauditor
 
 volumes:
   database-volume:

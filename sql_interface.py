@@ -1,4 +1,3 @@
-import configparser
 import logging
 import os
 import sys
@@ -12,108 +11,16 @@ from mysql.connector import (DatabaseError, IntegrityError, InterfaceError,
                              MySQLConnection, OperationalError,
                              ProgrammingError, connect)
 
-# Initialize the configuration file in memory.
-config = configparser.ConfigParser()
-
-# Read the configuration file into memory.
-try:
-    config.read_file(open(r'config.ini'))
-
-except FileNotFoundError:
-    print("config.ini does not exist. Creating now.")
-
-    # Add [logger] section.
-    config.add_section("logger")
-
-    # Specify the log file type.
-    log_file_type=input("What type of file do you want the log output to be?: ")
-    config.set("logger","log_file_type",log_file_type)
-
-    # Specify the log file name.
-    log_filename=input("What would you like to name the log? ")
-    config.set("logger","log_filename",log_filename)
-
-    # Specify the log level.
-    log_level="NULL"
-    while log_level.lower() not in {"debug","info","warning","error",
-                                    "critical"}:
-        log_level=input("What level would you like the log to record "+
-                        "DEBUG, INFO, WARNING, ERROR, or CRITICAL?: ")
-        config.set("logger","log_level",log_level.upper())
-
-    # Specify the log save location.
-    log_path=input("Where do you want the log files to be stored?: ")
-    config.set("logger","log_path",log_path)
-
-    # Specify whether the log should output to the console as well as the file.
-    log_term_output=input("Do you want the bot to output the log to the "+
-                          "console as well as to a file? Y/N: ")
-    while log_term_output.lower() not in {"y","n"}:
-        log_term_output=input("Please enter \"Y\" or \"N\": ")
-    if log_term_output.lower() == "y":
-        log_term_output = True
-    else:
-        log_term_output = False
-    config.set("logger","log_term_output",log_term_output)
-
-    # Add [bot] section.
-    config.add_section("bot")
-
-    # specify the bot owner.
-    bot_owner=getpass("Please enter the unique ID of the bot owner. (It will "+
-                      "appear blank. This is intended): ")
-    config.set("bot","bot_owner",bot_owner)
-
-    # Specify the bot command prefix.
-    command_prefix=input("What symbol would you like to use for the command "+
-                         "prefix?: ")
-    config.set("bot","command_prefix",command_prefix)
-    
-    # Specify the bot credentials.
-    credentials=getpass("Please enter the token for the bot to use. (It will "+
-                        "appear blank. This is intended): ")
-    config.set("bot","credentials",credentials)
-
-    # Add [database_credentials] section.
-    config.add_section("database_credentials")
-
-    address=input("Please enter the IP address or hostname of the database "+
-                  "server: ")
-    config.set("database_credentials","address",address)
-
-    username=input("Please enter the username that can access this database: ")
-    config.set("database_credentials","username",username)
-
-    password=getpass(f"Please enter the password for user {username} (It will "+
-                     "appear blank. This is intended): ")
-    config.set("database_credentials","password",password)
-
-    # Add [attach_path] section.
-    config.add_section("attach_path")
-    
-    attach_path=input("Where do you want attachments to be saved? ")
-    config.set("attach_path","path",attach_path)
-
-    with open('config.ini','wt') as config_file:
-        config.write(config_file)
-    
-    config.read_file(open(r'config.ini'))
-
-    # Blank credentials and password in case of leakage.
-    bot_owner=""
-    credentials=""
-    password=""
-
-if not os.path.isdir(config.get("logger","log_path")):
-    os.makedirs(config.get("logger","log_path"))
+if not os.path.isdir(os.getenv("log_path")):
+    os.makedirs(os.getenv("log_path"))
 
 # Initialize the logger.
 logger = logging.getLogger(__name__)
 
-# Get the log level from the config file.
-log_level=config.get("logger","log_level")
+# Get the log level.
+log_level=os.getenv("log_level")
 
-# Get the appropriate level of logging according to the config file.
+# Get the appropriate level of logging..
 if log_level=="DEBUG":
     log_level=logging.DEBUG
 elif log_level=="INFO":
@@ -125,16 +32,16 @@ elif log_level=="ERROR":
 elif log_level=="CRITICAL":
     log_level=logging.CRITICAL
 
-# Set the level of the logger according to the config file.
+# Set the level of the logger.
 logger.setLevel(log_level)
 
 # Format the logger.
 formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
                                 '%(funcName)s; %(message)s')
 
-log_path = config.get("logger","log_path")
-log_name = config.get("logger","log_filename")
-log_type = config.get("logger","log_file_type")
+log_path = "/var/log/discordauditor/"
+log_name = "DiscordAuditor"
+log_type = "log"
 log_number = 0
 
 while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
@@ -143,7 +50,7 @@ while os.path.isfile(log_path + log_name + str(log_number) + "." + log_type):
 # Build the file name for the log.
 log_filename = log_path + log_name + str(log_number) + "." + log_type
 
-# Set the name of the log file according to the config file.
+# Set the name of the log file.
 handler = logging.FileHandler(log_filename)
 
 # Add the log format to the handler.
@@ -152,18 +59,17 @@ handler.setFormatter(formatter)
 # Add the handler to the logger.
 logger.addHandler(handler)
 
-# If the config specifies to use the console as well as a file to output.
-if config.get("logger","log_term_output"):
-    handler2 = logging.StreamHandler(sys.stdout)
-    handler2.setLevel(log_level)
-    handler2.setFormatter(formatter)
-    logger.addHandler(handler2)        
+# Use the console as well as a file to output.
+handler2 = logging.StreamHandler(sys.stdout)
+handler2.setLevel(log_level)
+handler2.setFormatter(formatter)
+logger.addHandler(handler2)        
 
 # Set the appropriate time format for both MySQL and Discord.
 time_format = "%Y-%m-%d %H:%M:%S"
 
 # Get the attachment path the bot will use.
-attach_path = config.get("attach_path","path")
+attach_path = os.getenv("attach_path")
 
 # Create the directory if it doesn't exist already.
 if not os.path.isdir(attach_path):
@@ -1606,7 +1512,7 @@ def get_credentials() -> MySQLConnection:
     try:
         logger.info("Establishing a connection to the database server.")
         mydb=connect(
-            host=config.get("database_credentials","address"),
+            host=os.getenv('database_address'),
             user=os.getenv('user'),
             password=os.getenv('password'))
         logger.info("Database server connection established.")
