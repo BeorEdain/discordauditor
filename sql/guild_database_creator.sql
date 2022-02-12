@@ -1,4 +1,4 @@
-GRANT ALL ON *.* TO 'robert'@'%';
+GRANT ALL ON *.* TO 'beoredain'@'%';
 FLUSH PRIVILEGES;
 USE guildList;
 CREATE TABLE Guilds (
