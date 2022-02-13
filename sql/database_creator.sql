@@ -5,6 +5,7 @@ CREATE TABLE Channels (
 	channelType varchar(255) NOT NULL,
 	isNSFW boolean NOT NULL DEFAULT 0,
 	isNews boolean NOT NULL DEFAULT 0,
+	isDeleted boolean NOT NULL DEFAULT 0,
 	categoryID bigint,
 	PRIMARY KEY (channelID)
 );
