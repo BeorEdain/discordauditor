@@ -45,5 +45,6 @@ services:
       - log-volume:/var/log/discordauditor
 
 volumes:
-  database-volume:
   attachment-volume:
+  database-volume:
+  log-volume:
