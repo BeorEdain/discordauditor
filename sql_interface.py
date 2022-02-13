@@ -39,7 +39,7 @@ logger.setLevel(log_level)
 formatter = logging.Formatter('%(asctime)s; %(levelname)s; %(filename)s; '+
                                 '%(funcName)s; %(message)s')
 
-log_path = "/var/log/discordauditor/"
+log_path = os.getenv("log_path")
 log_name = "DiscordAuditor"
 log_type = "log"
 log_number = 0
@@ -89,6 +89,8 @@ async def new_message(message: discord.Message):
     logger.info(f"\'{message.author.name}\' wrote a message in "+
                  f"\'{message.guild.name}\' in the \'{message.channel.name}\' "+
                  "channel.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -239,13 +241,19 @@ async def new_message(message: discord.Message):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def edited_message(message: discord.Message):
     """
     Called when a message is edited in an audited server.\n
     message: The current version of the message that was edited.
     """
+
+    mydb = get_credentials()
+
     # Set up the cursor.
     cursor = ""
 
@@ -280,13 +288,19 @@ def edited_message(message: discord.Message):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def deleted_message(message: discord.Message):
     """
     Called when a message is deleted from an audited server.\n
     message: The message that has been deleted.
     """
+
+    mydb = get_credentials()
+
     # Set up the cursor.
     cursor = ""
     
@@ -322,13 +336,19 @@ def deleted_message(message: discord.Message):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def member_join(member: discord.Member):
     """
     Called when a new member joins a guild.\n
     member: The member who joined the guild.
     """
+
+    mydb = get_credentials()
+
     logger.info(f"User \'{member.name}\' has joined \'{member.guild.name}\'.")
 
     cursor = mydb.cursor()
@@ -358,7 +378,10 @@ def member_join(member: discord.Member):
         cursor.execute(sql,val)
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def member_update(before: discord.Member, after: discord.Member):
     """
@@ -366,6 +389,9 @@ def member_update(before: discord.Member, after: discord.Member):
     before: The member before the change.\n
     after:  The member after the change.
     """
+
+    mydb = get_credentials()
+
     logger.info(f"User \'{before.name}\' changed their nickname to "+
                 f"\'{after.nick}\' in \'{before.guild.name}\'.")
 
@@ -383,7 +409,10 @@ def member_update(before: discord.Member, after: discord.Member):
 
     cursor.execute(sql,val)
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def user_update(before: discord.User, after: discord.User):
     """
@@ -391,6 +420,9 @@ def user_update(before: discord.User, after: discord.User):
     before: The member before the change.\n
     after:  The member after the change.
     """
+
+    mydb = get_credentials()
+    
     logger.info(f"User \'{before.name}#{before.discriminator}\' has been "+
                 f"changed to \'{after.name}#{after.discriminator}")
     
@@ -409,7 +441,10 @@ def user_update(before: discord.User, after: discord.User):
 
     cursor.execute(sql,val)
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def voice_activity(member: discord.Member, before: discord.VoiceState,
                  after: discord.VoiceState):
@@ -420,6 +455,9 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     and they were not in another voice channel previously.\n
     after: The voice state. Will be None if the user is leaving the channel.
     """
+
+    mydb = get_credentials()
+
     # Set up the cursor.
     cursor = ""
     
@@ -504,13 +542,19 @@ def voice_activity(member: discord.Member, before: discord.VoiceState,
     
     # Commit the command to the database and close the cursor.
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 async def guild_join(guild: discord.Guild):
     """
     Called when a new guild is added.\n
     gulid: The new guild that has been enrolled.
     """
+
+    mydb = get_credentials()
+
     logger.info(f"\'{guild.name}\' has been enrolled.")
 
     # Set up the cursor.
@@ -559,6 +603,7 @@ async def guild_join(guild: discord.Guild):
 
     # Close the cursor.
     cursor.close()
+    mydb.close()
 
     # Get all of the channels, members, and messages in the new or reenrolled
     # guild.
@@ -572,6 +617,8 @@ def guild_update(guild: discord.Guild):
     guild: The guild that has been updated.
     """
     logger.info(f"\'{guild.name}\' has been updated.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -602,7 +649,9 @@ def guild_update(guild: discord.Guild):
     mydb.commit()
 
     # Close the cursor.
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def guild_leave(guild: discord.Guild):
     """
@@ -611,6 +660,8 @@ def guild_leave(guild: discord.Guild):
     guild: The guild that the bot is no longer enrolled in.
     """
     logger.info(f"\'{guild.name}\' has been unenrolled.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -641,7 +692,9 @@ def guild_leave(guild: discord.Guild):
     mydb.commit()
 
     # Close the cursor.
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def new_channel(channel: discord.TextChannel):
     """
@@ -650,6 +703,8 @@ def new_channel(channel: discord.TextChannel):
     """
     logger.info(f"The \'{channel.name}\' channel has been created in the "+
                 f"\'{channel.guild.name}\' guild.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -684,7 +739,10 @@ def new_channel(channel: discord.TextChannel):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def update_channel(channel: discord.TextChannel):
     """
@@ -693,6 +751,8 @@ def update_channel(channel: discord.TextChannel):
     """
     logger.info(f"Channel \'{channel.name}\' has been updated in the "+
                  f"\'{channel.guild.name}\' guild.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -726,7 +786,10 @@ def update_channel(channel: discord.TextChannel):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
 
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def delete_channel(channel: discord.TextChannel):
     """
@@ -735,6 +798,8 @@ def delete_channel(channel: discord.TextChannel):
     """
     logger.info(f"Channel \'{channel.name}\' has been deleted from the "+
                 f"\'{channel.guild.name}\' guild.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     try:
@@ -764,7 +829,10 @@ def delete_channel(channel: discord.TextChannel):
         logger.critical(f"Could not execute the command {sql}.\n{err}")
         
     mydb.commit()
+
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
 
 def build_guild_database(cursor):
     """
@@ -837,12 +905,14 @@ def guild_check(client: discord.Client):
     """
     logger.info("Getting the list of currently enrolled guilds.")
 
+    mydb = get_credentials()
+
     # Set up the cursor.
     cursor = ""
     
     try:
         cursor = mydb.cursor()
-    
+
     except OperationalError:
         logger.critical("The MySQL connection is unavailable.")
 
@@ -1004,7 +1074,9 @@ def guild_check(client: discord.Client):
     else:
         logger.debug("There are no unenrolled guilds.")
     
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
     logger.info("Guild check complete.")
 
 def channel_check(guild: discord.Guild):
@@ -1013,6 +1085,8 @@ def channel_check(guild: discord.Guild):
     guild: The guild that the bot will get the channels for.
     """
     logger.info(f"Checking for channel changes in \'{guild.name}\'.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -1118,7 +1192,10 @@ def channel_check(guild: discord.Guild):
 
         channel_tuple = ()
 
-        if str(test_channel.type) == "text":
+        if test_channel is None:
+            logger.info(f"{test_channel} does not exist anymore.")
+
+        elif str(test_channel.type) == "text":
             channel_tuple=(test_channel.id,test_channel.name,test_channel.topic,
                            str(test_channel.type),test_channel.is_nsfw(),
                            test_channel.is_news(),test_channel.category_id)
@@ -1128,7 +1205,7 @@ def channel_check(guild: discord.Guild):
                            str(test_channel.type),False,False,
                            test_channel.category_id)
 
-        if channel_tuple != row:
+        if channel_tuple != row and test_channel is not None:
             # Can't just add the channel_tuple to the list as the channelID
             # needs to be last as that's the order the SQL command requires.
             updated_channels.append((channel_tuple[1],channel_tuple[2],
@@ -1201,6 +1278,9 @@ def channel_check(guild: discord.Guild):
         logger.debug(f"No channels have been modified in \'{guild.name}\' "+
                      "since reawakening.")
 
+    logger.debug("Closing connection.")
+    cursor.close()
+    mydb.close()
     logger.info(f"Channel check in \'{guild.name}\' complete.")
 
 def member_check(guild: discord.Guild):
@@ -1209,6 +1289,8 @@ def member_check(guild: discord.Guild):
     guild: The guild that the bot will get the members for.
     """
     logger.info(f"Checking for member changes in \'{guild.name}\'.")
+
+    mydb = get_credentials()
 
     # Set up the cursor.
     cursor = ""
@@ -1306,7 +1388,9 @@ def member_check(guild: discord.Guild):
         logger.debug(f"No members have been updated in \'{guild.name}\' since "+
                      "reawakening.")
 
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
     logger.info(f"Member check complete in \'{guild.name}\' complete.")
 
 async def message_check(guild: discord.Guild):
@@ -1315,6 +1399,9 @@ async def message_check(guild: discord.Guild):
     guild: The guild that the bot will get the messages for.\n
     """
     logger.info(f"Checking for message changes in \'{guild.name}\'.")
+
+    mydb = get_credentials()
+
     # Instantiate a list for the raw messages.
     raw_messages = []
 
@@ -1501,7 +1588,9 @@ async def message_check(guild: discord.Guild):
         logger.debug(f"No messages have been deleted in \'{guild.name}\' "
                      "since reawakening.")
 
+    logger.debug("Closing connection.")
     cursor.close()
+    mydb.close()
     logger.info(f"Message check in \'{guild.name}\' complete.")
 
 def get_credentials() -> MySQLConnection:
@@ -1510,12 +1599,12 @@ def get_credentials() -> MySQLConnection:
     the process.\n
     """
     try:
-        logger.info("Establishing a connection to the database server.")
+        logger.debug("Establishing a connection to the database server.")
         mydb=connect(
             host=os.getenv('database_address'),
             user=os.getenv('user'),
             password=os.getenv('password'))
-        logger.info("Database server connection established.")
+        logger.debug("Database server connection established.")
         return mydb
 
     # If the connection cannot be established due to input error, log and quit.
@@ -1789,5 +1878,5 @@ async def command_gimme(ctx: commands.Context, request: tuple):
     # Delete the file from the hard drive.
     os.remove(workbook_name)
 
-# Create a new mydb connection to be used throughout the project.
-mydb = get_credentials()
+    cursor.close()
+    mydb.close()

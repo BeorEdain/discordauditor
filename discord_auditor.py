@@ -8,7 +8,7 @@ from sql_interface import (channel_check, command_gimme, delete_channel,
                            deleted_message, edited_message, guild_check,
                            guild_join, guild_leave, guild_update, logger,
                            member_check, member_join, member_update,
-                           message_check, mydb, new_channel, new_message,
+                           message_check, new_channel, new_message,
                            update_channel, user_update, voice_activity)
 
 logger.info("Initializing discord bot.")
@@ -26,7 +26,6 @@ async def quit(ctx: commands.Context):
     logger.info("Bot was told to close by owner. Shutting down.")
     await ctx.send('Quitting!')
     await bot.logout()
-    mydb.close()
 
 @bot.command(name="leave",help="Used by guild owners to remove the bot from "+
              "their guild.")

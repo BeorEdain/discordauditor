@@ -4,6 +4,8 @@ logs/
 attachments/
 .vscode
 config.ini
+dockerfile-testing
+docker-compose-testing.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
