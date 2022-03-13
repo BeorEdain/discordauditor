@@ -19,9 +19,9 @@ services:
       test: mysql guildList --user=${user} --password=${user_pass} --silent --execute "SELECT 1;"
       interval: 30s
       timeout: 30s
-      retries: 5  
+      retries: 5
     volumes:
-      - ./sql/guild_database_creator.sql:/docker-entrypoint-initdb.d/guild_database_creator.sql
+      - ${database_path}sql/guild_database_creator.sql:/docker-entrypoint-initdb.d/guild_database_creator.sql
       - database-volume:/var/lib/mysql
 
   discord-auditor-bot:
@@ -41,7 +41,7 @@ services:
       discord-auditor-db:
         condition: service_healthy
     volumes:
-      - attachment-volume:/docker/discordauditor-main/Discord_Auditor/attachments
+      - attachment-volume:/Discord_Auditor/attachments
       - log-volume:/var/log/discordauditor
 
 volumes:
