@@ -27,6 +27,9 @@ services:
   discord-auditor-bot:
     container_name: discord-auditor-bot
     image: discord-auditor-bot:production
+    build:
+      context: .
+      dockerfile: dockerfile
     environment:
       - user=${user}
       - password=${user_pass}
